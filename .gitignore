@@ -1,4 +1,7 @@
 /.vscode
-/env
+/venv
 /train
+/test
+/.ipynb_checkpoints
 *.pyc
+

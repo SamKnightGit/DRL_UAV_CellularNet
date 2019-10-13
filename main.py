@@ -14,7 +14,7 @@ import time
 OUTPUT_GRAPH = True
 LOG_DIR = './log'
 N_WORKERS = 4#multiprocessing.cpu_count()
-MAX_GLOBAL_EP = 2000
+MAX_GLOBAL_EP = 20
 GLOBAL_NET_SCOPE = 'Global_Net'
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.9
