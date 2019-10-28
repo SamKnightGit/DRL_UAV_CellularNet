@@ -61,9 +61,9 @@ def Run_Test(reward_file_name):
         s_, r, done, info = test_env.step_test(action, False)
         
         reward_buf.append(info[0])
-	sinr_all.append(test_env.channel.current_BS_sinr)       
+        sinr_all.append(test_env.channel.current_BS_sinr)       
         if step % 500 == 0 or step == MAX_STEP:
-            print "step ", step, " time ellipsed ", time.time() - start_time
+            print("step ", step, " time ellipsed ", time.time() - start_time)
             start_time = time.time()
             np.save(reward_file_name, reward_buf)
             np.save(OUTPUT_DIR + "time",single_step_time)
@@ -83,6 +83,8 @@ def Run_Test(reward_file_name):
     np.save(reward_file_name, reward_buf)
     np.save(OUTPUT_DIR + "time",single_step_time)
     np.save(OUTPUT_DIR + "sinr",sinr_all)
+
+
 if __name__ == "__main__":
     Run_Test(OUTPUT_FILE_NAME)
 

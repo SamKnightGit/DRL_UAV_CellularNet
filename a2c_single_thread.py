@@ -63,7 +63,7 @@ class A2CNet(object):
 
 
     def _build_net_mlp(self):
-        print "build MLP net"
+        print("build MLP net")
         w_init = tf.random_normal_initializer(0., .1, seed = TENSOR_SEED)
         with tf.variable_scope('actor'):
             l_a = tf.layers.dense(self.s, 200, tf.nn.relu6, kernel_initializer=w_init, name='la')
@@ -105,7 +105,7 @@ class Coordinator(object):
             for rollout in range(rollouts_per_episode):
                 buffer_state, buffer_action, buffer_value_target = [], [], []
                 for worker in self.workers:
-                    print("Processing in worker {}, rollout {} of episode {}".format(worker.name, rollout, episode))
+                    print(f"Processing in worker {worker.name}, rollout {rollout} of episode {episode}")
                     states, actions, targets = worker.work()
                     buffer_state += states
                     buffer_action += actions
@@ -114,10 +114,6 @@ class Coordinator(object):
                 buffer_state = np.vstack(buffer_state)
                 buffer_action = np.array(buffer_action)
                 buffer_value_target = np.vstack(buffer_value_target)
-
-                print("Buffer State: {}".format(buffer_state))
-                print("Buffer Action: {}".format(buffer_action))
-                print("Buffer VT: {}".format(buffer_value_target))
 
                 feed_dict = {
                     self.network.s: buffer_state,
@@ -172,16 +168,16 @@ class Worker(object):
 
 
 if __name__ == "__main__":
-    print ">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>"
-    print "tensor seed: ", TENSOR_SEED
-    print "N_S", N_S
-    print "N_A", N_A
-    print "LR_C", LR_C
-    print "N_BS", N_BS
-    print "N_UE", N_UE
-    print "AREA_W", AREA_W
-    print "Num of episodes", MAX_GLOBAL_EP
-    print ">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>"
+    print(">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>")
+    print("tensor seed: ", TENSOR_SEED)
+    print("N_S", N_S)
+    print("N_A", N_A)
+    print("LR_C", LR_C)
+    print("N_BS", N_BS)
+    print("N_UE", N_UE)
+    print("AREA_W", AREA_W)
+    print("Num of episodes", MAX_GLOBAL_EP)
+    print(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
     
     SESS = tf.Session()
 
@@ -200,32 +196,3 @@ if __name__ == "__main__":
     SESS.run(tf.global_variables_initializer())   
     coordinator.run()
 
-
-    """
-        workers = []
-        # Create worker
-        for i in range(N_WORKERS):
-            i_name = 'W_%i' % i   # worker namei
-            print "Creating worker ", i_name
-            workers.append(Worker(i_name, GLOBAL_AC))
-
-    COORD = tf.train.Coordinator()
-    SESS.run(tf.global_variables_initializer())
-    np.savez("train/Global_A_PARA_init", SESS.run(GLOBAL_AC.actor_params))
-
-    if OUTPUT_GRAPH:
-        if os.path.exists(LOG_DIR):
-            shutil.rmtree(LOG_DIR)
-            tf.summary.FileWriter(LOG_DIR, SESS.graph)
-    
-    worker_threads = []
-    for worker in workers:
-        job = lambda: worker.work()
-        t = threading.Thread(target=job)
-        t.start()
-        worker_threads.append(t)
-    COORD.join(worker_threads)
-	
-    end = time.time()
-    print "Total time ", (end - start)
-    """

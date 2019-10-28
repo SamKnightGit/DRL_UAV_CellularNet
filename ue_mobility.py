@@ -160,7 +160,7 @@ def GetRandomLocationInGrid(gridX_size, gridY_size, num_node, h=0, min_dist=0):
         y = np.random.randint(0, gridY_size, size=num_node)
 
         loc = [x,y,np.ones((num_node)) * h] #3D loc
-        any_too_close = Get_if_collide(loc, min_dist)
+        any_too_close = check_collision(loc, min_dist)
 
     grid = np.zeros((gridX_size, gridY_size))
 
@@ -201,9 +201,9 @@ def BS_move(loc, bound, action, stepLen, min_dist, n_action):
         """
     
     nBS = np.shape(loc)[0]
-#    print "location \n", loc
-    act_all = Decimal_to_Base_N(action, n_action, nBS)
-#    print "action", act_all
+#    print("location \n", loc
+    act_all = decimal_to_base_n(action, n_action, nBS)
+#    print("action", act_all
     [xMin, xMax, yMin, yMax] = bound
     
     #action 5-8 moves with longer stepLen
@@ -261,10 +261,10 @@ def BS_move(loc, bound, action, stepLen, min_dist, n_action):
         if not if_collide:
             loc[i] = [x, y, z]
 
-#    print "new location \n", loc
+#    print("new location \n", loc
     return loc
 
-def UE_rand_move(loc, bound, stepLen):
+def ue_random_move(loc, bound, stepLen):
     
     [xMin, xMax, yMin, yMax] = bound
     
@@ -301,7 +301,7 @@ def UE_rand_move(loc, bound, stepLen):
     return loc
 
 
-def Decimal_to_Base_N(num, base, digits):
+def decimal_to_base_n(num, base, digits):
     """Change decimal number ``num'' to given base
         Upto base 36 is supported.
         num: the number to be converted
@@ -329,7 +329,7 @@ def Decimal_to_Base_N(num, base, digits):
 
     return result_array
 
-def Get_if_collide(locations, threshold):
+def check_collision(locations, threshold):
     """
     check if the distance between any 2 of the given locations are below the threshold
     """
@@ -346,7 +346,7 @@ def Get_if_collide(locations, threshold):
 
     return any_collide
 
-def Get_loc_penalty(locations, threshold, nUE):
+def get_loc_penalty(locations, threshold, nUE):
     """
         check if the distance between any 2 of the given locations are below the threshold
         """

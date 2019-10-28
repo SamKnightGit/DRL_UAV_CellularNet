@@ -96,7 +96,7 @@ matplotlib.rcParams.update({'font.size': 14})
 #    for ueId in range(2):
 #        ax.annotate('UE', xy=(ueLocationAll[ueId][0],ueLocationAll[ueId][1]), xytext=(ueLocationAll[ueId][0],ueLocationAll[ueId][1]),
 #                    arrowprops=dict(facecolor='white', shrink=0.05))
-#        print "UE",ueId," (",ueLocationAll[ueId] ,")", ulSinr[ueId][bsId]
+#        print("UE",ueId," (",ueLocationAll[ueId] ,")", ulSinr[ueId][bsId]
 #
 #    title("DL SINR Distribution from BS"+ str(bsId) + " (" + str(x) + ", " + str(y) + ")")
 #    imshow(sinrDistrbution[bsId], cmap='hot', interpolation='nearest')
@@ -112,7 +112,7 @@ def draw_UE_HO(ue_loc, numGridX, numGridY, bsLoc, ue2watch, xbestSinr, xcurrSinr
 #    subplot(4, 1, 1)
     ueValGrid = np.zeros((3, numGridX, numGridY))
     if color.any():
-        for usr in xrange(len(ue_loc)):
+        for usr in range(len(ue_loc)):
             ueValGrid[:, ue_loc[usr][0], ue_loc[usr][1]] = color[usr]
     else:
         # problem

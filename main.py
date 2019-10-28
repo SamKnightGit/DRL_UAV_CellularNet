@@ -82,7 +82,7 @@ class ACNet(object):
                     self.update_c_op = OPT_C.apply_gradients(zip(self.c_grads, globalAC.c_params))
 
     def _build_net_cnn(self, scope):
-        print "build CNN net"
+        print("build CNN net"
         w_init = tf.random_normal_initializer(0., .1, seed=TENSOR_SEED)
         with tf.variable_scope('actor'):
             l_a = tf.layers.conv2d(tf.transpose(tf.reshape(self.s, shape=[-1, N_BS + 1, AREA_W, AREA_W]), [0, 2, 3, 1]),
@@ -137,7 +137,7 @@ class ACNet(object):
 
 
     def _build_net_mlp(self, scope):
-        print "build MLP net"
+        print("build MLP net"
         w_init = tf.random_normal_initializer(0., .1, seed = TENSOR_SEED)
         with tf.variable_scope('actor'):
             l_a = tf.layers.dense(self.s, 200, tf.nn.relu6, kernel_initializer=w_init, name='la')
@@ -179,7 +179,7 @@ class Worker(object):
         global GLOBAL_RUNNING_R, GLOBAL_EP
         
         buffer_s, buffer_a, buffer_r = [], [], []
-        print "worker ", self.name, "starts training"
+        print("worker ", self.name, "starts training"
         
         while not COORD.should_stop() and GLOBAL_EP < MAX_GLOBAL_EP:
             #             s = self.env.reset()
@@ -244,7 +244,7 @@ class Worker(object):
                         GLOBAL_RUNNING_R.append(ep_r)
                     else:
                         GLOBAL_RUNNING_R.append(0.99 * GLOBAL_RUNNING_R[-1] + 0.01 * ep_r)
-                    print(
+                    print("
                           self.name,
                           "Ep:", GLOBAL_EP,
                           "| Ep_r: %f" % GLOBAL_RUNNING_R[-1],
@@ -268,18 +268,18 @@ class Worker(object):
 
 
 if __name__ == "__main__":
-    print ">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>"
-    print "tensor seed: ", TENSOR_SEED
-    print "N_S", N_S
-    print "N_A", N_A
-    print "LR_C", LR_C
-    print "N_BS", N_BS
-    print "N_UE", N_UE
-    print "AREA_W", AREA_W
-    print "Num of episodes", MAX_GLOBAL_EP
-    print "(if cnn), num of filters", CNN_NUM_FILTERS
-    print "(if cnn), num of filters", CNN_KERNEL_SIZE
-    print ">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>"
+    print(">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>"
+    print("tensor seed: ", TENSOR_SEED
+    print("N_S", N_S
+    print("N_A", N_A
+    print("LR_C", LR_C
+    print("N_BS", N_BS
+    print("N_UE", N_UE
+    print("AREA_W", AREA_W
+    print("Num of episodes", MAX_GLOBAL_EP
+    print("(if cnn), num of filters", CNN_NUM_FILTERS
+    print("(if cnn), num of filters", CNN_KERNEL_SIZE
+    print(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>"
     
     SESS = tf.Session()
 
@@ -295,7 +295,7 @@ if __name__ == "__main__":
         # Create worker
         for i in range(N_WORKERS):
             i_name = 'W_%i' % i   # worker namei
-            print "Creating worker ", i_name
+            print("Creating worker ", i_name
             workers.append(Worker(i_name, GLOBAL_AC))
 
     COORD = tf.train.Coordinator()
@@ -316,5 +316,5 @@ if __name__ == "__main__":
     COORD.join(worker_threads)
 	
     end = time.time()
-    print "Total time ", (end - start)
+    print("Total time ", (end - start)
 

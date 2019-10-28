@@ -51,7 +51,7 @@ class MobiEnvironment:
 
         self.boundaries = boundaries
         self.mobility_model = mobility_model
-        print "mobility model: ", mobility_model, " grid size ", grid_n
+        print("mobility model: ", mobility_model, " grid size ", grid_n)
         #       bsLoc is 3D, bsLocGrid is 2D heatmap
         #self.bsLoc, self.bsLocGrid = GetRandomLocationInGrid(self.grid_n, self.grid_n, self.nBS, H_BS, MIN_BS_DIST)
         self.initBsLoc = np.array([xBS, yBS, np.ones((np.size(xBS)))*self.bs_h], dtype=int).T
@@ -79,7 +79,7 @@ class MobiEnvironment:
         elif self.mobility_model == "in_coverage":
             self.ueLoc, self.ueLocGrid = GetRandomLocationInCellCoverage(self.grid_n, self.grid_n, R_BS,  self.bsLoc, self.nUE)
         elif self.mobility_model == "read_trace":
-            print "testing with mobility trace ", test_mobi_file_name
+            print("testing with mobility trace ", test_mobi_file_name)
             assert test_mobi_file_name
             self.ueLoc_trace = np.load(test_mobi_file_name)
             
@@ -125,7 +125,7 @@ class MobiEnvironment:
             self.ueLoc =  np.concatenate((positions, z), axis=1).astype(int)
             self.ueLocGrid = GetGridMap(self.grid_n, self.grid_n, self.ueLoc)
         elif self.mobility_model == "read_trace":
-            print "reseting mobility trace "
+            print("reseting mobility trace ")
             self.ueLoc = self.ueLoc_trace[0]
             self.ueLocGrid = GetGridMap(self.grid_n, self.grid_n, self.ueLoc)
         else:

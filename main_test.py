@@ -71,7 +71,7 @@ def Run_Test(g_test_net, reward_file_name):
         
 #        ue_walk_trace.append(info[2])
         if step % 500 == 0 or step == MAX_STEP:
-            print "step ", step
+            print("step ", step)
             np.save(reward_file_name + "decomposed_reward", decomposed_reward_buf)
             np.save(reward_file_name + "reward", reward_buf)
 

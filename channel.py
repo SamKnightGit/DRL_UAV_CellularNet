@@ -142,7 +142,7 @@ class LTEChannel:
         bestDlSINR = np.max(dlSinr, axis=1)
 #        print time_now, "s ue ", ueLoc[10], " dl sinr ", bestDlSINR[10], " from BS ", bestDlBS[10]
 
-        for ue in xrange(self.nUE):
+        for ue in range(self.nUE):
             self.current_BS_sinr[ue] = dlSinr[ue, self.current_BS[ue]]
 
         if np.shape(self.bestBS_buf)[0] < self.hoBufDepth:
@@ -151,13 +151,13 @@ class LTEChannel:
             #FIFO buffer bottom-in
             self.bestBS_buf[:-1] = self.bestBS_buf[1:]
             self.bestBS_buf[-1] = bestDlBS
-        #     print "bestBS_buf..\n", bestBS_buf
+        #     print("bestBS_buf..\n", bestBS_buf
         bestRemain = np.all(self.bestBS_buf == self.bestBS_buf[0,:], axis = 0)
         bestChanged = self.current_BS != self.bestBS_buf[-1,:]
 
         ifNeedHO = np.logical_and(bestRemain, bestChanged)
         ifNeedHO = np.logical_and(ifNeedHO, bestDlSINR - self.current_BS_sinr > self.hoThresh_db)
-#        print "if needHO", ifNeedHO
+#        print("if needHO", ifNeedHO
 
         if np.any(ifNeedHO):
             ueNeedHO = np.flatnonzero(ifNeedHO)
@@ -172,7 +172,7 @@ class LTEChannel:
 
         self.ue_out = ue_out
         n_outage = np.size(new_out)
-#        print " ", new_out, " ", self.ue_out, " ", n_outage
+#        print(" ", new_out, " ", self.ue_out, " ", n_outage
 
     
         if get_rate or ifdisplay:
@@ -182,7 +182,7 @@ class LTEChannel:
             dlRatePerChannel_from_currentBS = np.zeros((self.nUE))
             #UL
             ulInterfPower = self.GetULInterference(bsLoc)
-            # print "UL interference power \n", ulInterfPower
+            # print("UL interference power \n", ulInterfPower
             ulRequiredRate = 1
 
             ulSinr = []
@@ -207,7 +207,7 @@ class LTEChannel:
             # mean rate of all UEs as received from their current BSs(maybe don't care)
             dl_rate_mean = np.mean(dlRatePerChannel_from_currentBS)
             ul_rate_mean = np.mean(ulRatePerChannel_from_currentBS)
-        #        print "mean DL and UL Rate Per Channel \n", dl_rate_mean, ul_rate_mean
+        #        print("mean DL and UL Rate Per Channel \n", dl_rate_mean, ul_rate_mean
 
 
         association_map = self.GetCurrentAssociationMap(ueLoc)
@@ -325,7 +325,7 @@ class LTEChannel:
                     else:
                         avg_channel_gain[bs_id][intf_id] = avg_channel_gain[intf_id][bs_id]
         
-        #     print "UL channel gain", avg_channel_gain
+        #     print("UL channel gain", avg_channel_gain
         return avg_channel_gain
 
     def GetULInterference(self, bs_loc):
