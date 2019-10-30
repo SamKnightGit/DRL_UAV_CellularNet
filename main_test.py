@@ -66,7 +66,7 @@ def Run_Test(g_test_net, reward_file_name):
         s_, r, done, info = test_env.step_test(action, False)
         # s_, r, done, info = test_env.step(action, False)
         reward_buf.append(r)
-     	sinr_all.append(test_env.channel.current_BS_sinr)   
+        sinr_all.append(test_env.channel.current_BS_sinr)   
         decomposed_reward_buf.append(info[0])
         
 #        ue_walk_trace.append(info[2])

@@ -83,9 +83,8 @@ class LTEChannel:
         #        self.init_BS = np.zeros((self.nUE)).astype('int32')
 
         self.interfDL = [range(self.nBS) for bs in range(self.nBS)]
-        
         for bs in range(self.nBS):
-            self.interfDL[bs].remove(bs)
+            self.interfDL[bs] = [bs_ind for bs_ind in self.interfDL[bs] if bs_ind != bs]
         
         self.interfUL = self.interfDL
         
