@@ -37,61 +37,58 @@ N_S = env.observation_space_dim #number of state
 N_A = env.action_space_dim
 
 class ACNet(object):
-    def __init__(self, is_global=False):
-        
-        if is_global:   # get global network
-            self.s = tf.Variable(tf.float32, [None, N_S], 'S')
-            self.actor_model, self.actor_optimizer, self.critic_model, self.critic_optimizer = self._build_net_mlp()
-        else:   # local net, calculate losses
-            self.s = tf.Variable(tf.float32, [None, N_S], 'S')
-            self.a_his = tf.Variable(tf.int32, [None, ], 'A')
-            self.v_target = tf.Variable(tf.float32, [None, 1], 'Vtarget')
-            
-            self.actor_model, self.actor_optimizer, self.critic_model, self.critic_optimizer = self._build_net_mlp()
-            
-            td = tf.subtract(self.v_target, self.critic_model, name='TD_error')
-            with tf.name_scope('critic_loss'):
-                self.critic_loss = tf.reduce_mean(tf.square(td))
-        
-            with tf.name_scope('actor_loss'):
-                log_prob = tf.reduce_sum(tf.math.log(self.actor_model + 1e-5) * tf.one_hot(self.a_his, N_A, dtype=tf.float32), axis=1, keep_dims=True)
-                exp_v = log_prob * tf.stop_gradient(td)
-                entropy = -tf.reduce_sum(self.actor_model * tf.math.log(self.actor_model + 1e-5),
-                                            axis=1, keep_dims=True)  # encourage exploration
-                self.exp_v = ENTROPY_BETA * entropy + exp_v
-                self.actor_loss = tf.reduce_mean(-self.exp_v)
-            
-            with tf.name_scope('local_grad'):
-                self.actor_gradients = tf.gradients(self.actor_loss, self.actor_model.trainable_variables)
-                self.critic_gradients = tf.gradients(self.critic_loss, self.critic_model.trainable_variables)
+    def __init__(self, name):
+        self.name = name
+        self.actor_model, self.actor_optimizer, self.critic_model, self.critic_optimizer = self._build_net_mlp()
 
+    def get_actor_gradients(self, value_target, action_history):
+        temporal_difference = tf.subtract(value_target, self.critic_model)
+        log_probability = tf.reduce_sum(
+            tf.math.log(self.actor_model + 1e-5) * tf.one_hot(action_history, N_A, 
+            dtype=tf.float32), 
+            axis=1, 
+            keep_dims=True
+        )
+        
+        exp_value = log_probability * tf.stop_gradient(temporal_difference)
+        entropy = -tf.reduce_sum(self.actor_model * tf.math.log(self.actor_model + 1e-5), axis=1, keep_dims=True)
+        entropy *= ENTROPY_BETA
+        exp_value += entropy
+        actor_loss = tf.reduce_mean(-exp_value)
+        return tf.gradients(actor_loss, self.actor_model.trainable_variables)
 
+    def get_critic_gradients(self, value_target):
+        temporal_difference = tf.subtract(value_target, self.critic_model)
+        critic_loss = tf.reduce_mean(tf.square(temporal_difference))
+        return tf.gradients(critic_loss, self.critic_model.trainable_variables)
 
     def _build_net_mlp(self):
         print("build MLP net")
         w_init = tf.random_normal_initializer(0., .1, seed = TENSOR_SEED)
         actor_model = tf.keras.Sequential([
-            tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init, input_shape=self.s),
+            tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init, input_shape=(None, N_S)),
             tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init),
             tf.keras.layers.Dense(N_A, tf.nn.softmax, kernel_initializer=w_init)
         ])
         actor_optimizer = tf.keras.optimizers.RMSprop(learning_rate=LR_A)
-        actor_model.compile(actor_optimizer)
 
         critic_model = tf.keras.Sequential([
-            tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init, input_shape=self.s),
+            tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init, input_shape=(None, N_S)),
             tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init),
             tf.keras.layers.Dense(1, kernel_initializer=w_init)
         ])
-        critic_optimizer = tf.keras.optimzers.RMSprop(learning_rate=LR_C)
-        critic_model.compile(critic_optimizer)
+        critic_optimizer = tf.keras.optimizers.RMSprop(learning_rate=LR_C)
 
         return actor_model, actor_optimizer, critic_model, critic_optimizer
 
 
-    def update_global(self, global_network):
-        global_network.actor_optimizer.apply_gradients(zip(self.actor_gradients, global_network.actor_model.trainable_variables))
-        global_network.critic_optimizer.apply_gradients(zip(self.critic_gradients, global_network.critic_model.trainable_variables))
+    def update_global(self, global_network, value_target, action_history):
+        global_network.actor_optimizer.apply_gradients(
+            zip(self.get_actor_gradients(value_target, action_history), global_network.actor_model.trainable_variables)
+        )
+        global_network.critic_optimizer.apply_gradients(
+            zip(self.get_critic_gradients(value_target), global_network.critic_model.trainable_variables)
+        )
     
     @tf.function
     def pull_from_global(self, global_network):  # run by a local
@@ -104,7 +101,7 @@ class ACNet(object):
 
     @tf.function
     def choose_action(self, s):  # run by a local
-        prob_weights = self.actor_model.predict(s[np.newaxis, :])
+        prob_weights = self.actor_model.predict(s[np.newaxis, :], steps=1)
         action = np.random.choice(range(prob_weights.shape[1]),
                                   p=prob_weights.ravel())  # select action w.r.t the actions prob
         return action
@@ -159,7 +156,7 @@ class Worker(object):
                     if done:
                         v_s_ = 0   # terminal
                     else:
-                        v_s_ = SESS.run(self.AC.critic_model, {self.AC.s: s_[np.newaxis, :]})[0, 0]
+                        v_s_ = self.AC.critic_model.predict(s_[np.newaxis, :])[0, 0]
                     buffer_v_target = []
                     
                     for r in buffer_r[::-1]:    # reverse buffer r
@@ -169,17 +166,15 @@ class Worker(object):
                     buffer_v_target.reverse()
                     
                     buffer_s, buffer_a, buffer_v_target = np.vstack(buffer_s), np.array(buffer_a), np.vstack(buffer_v_target)
-                    feed_dict = {
-                        self.AC.s: buffer_s,
-                        self.AC.a_his: buffer_a,
-                        self.AC.v_target: buffer_v_target,
-                    }
-                    self.AC.update_global(feed_dict)
+                    # feed_dict = {
+                    #     self.AC.s: buffer_s,
+                    #     self.AC.a_his: buffer_a,
+                    #     self.AC.v_target: buffer_v_target,
+                    # }
+                    self.AC.update_global(self.global_network, buffer_v_target, buffer_a)
                     
                     buffer_s, buffer_a, buffer_r = [], [], []
                     self.AC.pull_from_global(self.global_network)
-#                    self.update_end= time.time()
-#                    print self.name," (agent) update time ", self.update_end - self.update_start
 
                 s = s_
 
@@ -204,12 +199,12 @@ class Worker(object):
                         self.buf_r_dissect_all_ep.append(buf_r_dissect)
                         np.save("train/Reward_dissect", self.buf_r_dissect_all_ep)
 
-                    if GLOBAL_EP % 500 == 0:
-                        np.savez("train/Global_A_PARA" + str(GLOBAL_EP), SESS.run(GLOBAL_AC.a_params))
+                    # if GLOBAL_EP % 500 == 0:
+                    #     np.savez("train/Global_A_PARA" + str(GLOBAL_EP), SESS.run(GLOBAL_AC.a_params))
 
                     np.save("train/Global_return",GLOBAL_RUNNING_R)
 #                    np.savez("train/A_PARA",SESS.run(self.AC.a_params))
-                    np.savez("train/Global_A_PARA",SESS.run(GLOBAL_AC.a_params))
+                    # np.savez("train/Global_A_PARA",SESS.run(GLOBAL_AC.a_params))
 
                     break
 
@@ -228,14 +223,10 @@ if __name__ == "__main__":
     print("(if cnn), num of filters", CNN_KERNEL_SIZE)
     print(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
     
-    SESS = tf.Session()
-
     start = time.time()
     
     with tf.device("/cpu:0"):
-        OPT_A = tf.train.RMSPropOptimizer(LR_A, name='RMSPropA')
-        OPT_C = tf.train.RMSPropOptimizer(LR_C, name='RMSPropC')
-        GLOBAL_AC = ACNet(GLOBAL_NET_SCOPE)  # we only need its params
+        GLOBAL_AC = ACNet(name="GLOBAL")  # we only need its params
 
 
         workers = []
@@ -246,13 +237,6 @@ if __name__ == "__main__":
             workers.append(Worker(i_name, GLOBAL_AC))
 
     COORD = tf.train.Coordinator()
-    SESS.run(tf.global_variables_initializer())
-    np.savez("train/Global_A_PARA_init", SESS.run(GLOBAL_AC.a_params))
-
-    if OUTPUT_GRAPH:
-        if os.path.exists(LOG_DIR):
-            shutil.rmtree(LOG_DIR)
-            tf.summary.FileWriter(LOG_DIR, SESS.graph)
     
     worker_threads = []
     for worker in workers:
