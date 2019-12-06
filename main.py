@@ -26,8 +26,11 @@ GLOBAL_EP = 0
 TENSOR_SEED = 6
 CNN_NUM_FILTERS = 10
 CNN_KERNEL_SIZE = 5
-EXPERIMENT_NAME = "Normal_A3C"
-os.makedirs("./train/" + EXPERIMENT_NAME)
+EXPERIMENT_NAME = "A3C_median_SINR"
+try:
+    os.makedirs("./train/" + EXPERIMENT_NAME)
+except OSError:
+    pass
 N_BS = 4
 N_UE = 40
 AREA_W = 100 #width of the playground
@@ -239,7 +242,7 @@ class Worker(object):
                 s = s_
 
                 self.total_steps += 1
-                
+
                 if done:
                     if len(GLOBAL_RUNNING_R) == 0:  # record running episode reward
                         GLOBAL_RUNNING_R.append(ep_r)
@@ -261,9 +264,9 @@ class Worker(object):
                     if GLOBAL_EP % 500 == 0:
                         np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA" + str(GLOBAL_EP), SESS.run(GLOBAL_AC.a_params))
 
-                    np.save("train/" + EXPERIMENT_NAME + "/Global_return",GLOBAL_RUNNING_R)
+                    np.save("train/" + EXPERIMENT_NAME + "/Global_return", GLOBAL_RUNNING_R)
 #                    np.savez("train/A_PARA",SESS.run(self.AC.a_params))
-                    np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA",SESS.run(GLOBAL_AC.a_params))
+                    np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA", SESS.run(GLOBAL_AC.a_params))
 
                     break
 
