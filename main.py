@@ -14,7 +14,7 @@ import time
 OUTPUT_GRAPH = True
 LOG_DIR = './log'
 N_WORKERS = 4#multiprocessing.cpu_count()
-MAX_GLOBAL_EP = 20
+MAX_GLOBAL_EP = 200
 GLOBAL_NET_SCOPE = 'Global_Net'
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.9
@@ -26,7 +26,8 @@ GLOBAL_EP = 0
 TENSOR_SEED = 6
 CNN_NUM_FILTERS = 10
 CNN_KERNEL_SIZE = 5
-
+EXPERIMENT_NAME = "Normal_A3C"
+os.makedirs("./train/" + EXPERIMENT_NAME)
 N_BS = 4
 N_UE = 40
 AREA_W = 100 #width of the playground
@@ -255,14 +256,14 @@ class Worker(object):
 
                     if self.name == 'W_0':
                         self.buf_r_dissect_all_ep.append(buf_r_dissect)
-                        np.save("train/Reward_dissect", self.buf_r_dissect_all_ep)
+                        np.save("train/" + EXPERIMENT_NAME + "/Reward_dissect", self.buf_r_dissect_all_ep)
 
                     if GLOBAL_EP % 500 == 0:
-                        np.savez("train/Global_A_PARA" + str(GLOBAL_EP), SESS.run(GLOBAL_AC.a_params))
+                        np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA" + str(GLOBAL_EP), SESS.run(GLOBAL_AC.a_params))
 
-                    np.save("train/Global_return",GLOBAL_RUNNING_R)
+                    np.save("train/" + EXPERIMENT_NAME + "/Global_return",GLOBAL_RUNNING_R)
 #                    np.savez("train/A_PARA",SESS.run(self.AC.a_params))
-                    np.savez("train/Global_A_PARA",SESS.run(GLOBAL_AC.a_params))
+                    np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA",SESS.run(GLOBAL_AC.a_params))
 
                     break
 
@@ -282,7 +283,16 @@ if __name__ == "__main__":
     print ">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>"
     
     SESS = tf.Session()
-
+    with open("train/" + EXPERIMENT_NAME + "/experiment_summary.txt", "w+") as f:
+        f.write("tensor seed: " + str(TENSOR_SEED) + "\n")
+        f.write("N_S " + str(N_S) + "\n")
+        f.write("N_A " + str(N_A) + "\n")
+        f.write("LR_C " + str(LR_C) + "\n")
+        f.write("N_BS " + str(N_BS) + "\n")
+        f.write("N_UE " + str(N_UE) + "\n")
+        f.write("AREA_W " + str(AREA_W) + "\n")
+        f.write("Num of episodes " + str(MAX_GLOBAL_EP) + "\n")
+        f.write(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
     start = time.time()
     
     with tf.device("/cpu:0"):
@@ -300,7 +310,7 @@ if __name__ == "__main__":
 
     COORD = tf.train.Coordinator()
     SESS.run(tf.global_variables_initializer())
-    np.savez("train/Global_A_PARA_init", SESS.run(GLOBAL_AC.a_params))
+    np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA_init", SESS.run(GLOBAL_AC.a_params))
 
     if OUTPUT_GRAPH:
         if os.path.exists(LOG_DIR):
@@ -314,7 +324,8 @@ if __name__ == "__main__":
         t.start()
         worker_threads.append(t)
     COORD.join(worker_threads)
-	
     end = time.time()
+    with open("train/" + EXPERIMENT_NAME + "/time_taken.txt", "w+") as f:
+        f.write("Total time taken" + str(end-start))
     print "Total time ", (end - start)
 
