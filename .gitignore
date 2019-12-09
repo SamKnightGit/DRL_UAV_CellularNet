@@ -5,4 +5,5 @@
 /test
 /.ipynb_checkpoints
 *.pyc
+*.out
 

@@ -4,7 +4,7 @@
 #SBATCH --partition=General_Usage
 #SBATCH --gres=gpu:1
 #SBATCH --mem=2000  # memory in Mb
-#SBATCH --time=0-01:00:00
+#SBATCH --time=0-05:00:00
 
 
 export CUDA_HOME=/opt/cuda-10.0.130/
@@ -25,4 +25,4 @@ export PYTHON_PATH=$PATH
 
 source /home/${STUDENT_ID}/miniconda3/bin/activate disspy2
 
-python ./main.py
+python ./a2c_single_thread.py
