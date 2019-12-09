@@ -281,20 +281,18 @@ if __name__ == "__main__":
     print "N_UE", N_UE
     print "AREA_W", AREA_W
     print "Num of episodes", MAX_GLOBAL_EP
-    print "(if cnn), num of filters", CNN_NUM_FILTERS
-    print "(if cnn), num of filters", CNN_KERNEL_SIZE
     print ">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>"
     
     SESS = tf.Session()
     with open("train/" + EXPERIMENT_NAME + "/experiment_summary.txt", "w+") as f:
         f.write("tensor seed: " + str(TENSOR_SEED) + "\n")
-        f.write("N_S " + str(N_S) + "\n")
-        f.write("N_A " + str(N_A) + "\n")
-        f.write("LR_C " + str(LR_C) + "\n")
-        f.write("N_BS " + str(N_BS) + "\n")
-        f.write("N_UE " + str(N_UE) + "\n")
-        f.write("AREA_W " + str(AREA_W) + "\n")
-        f.write("Num of episodes " + str(MAX_GLOBAL_EP) + "\n")
+        f.write("N_S: " + str(N_S) + "\n")
+        f.write("N_A: " + str(N_A) + "\n")
+        f.write("LR_C: " + str(LR_C) + "\n")
+        f.write("N_BS: " + str(N_BS) + "\n")
+        f.write("N_UE: " + str(N_UE) + "\n")
+        f.write("AREA_W: " + str(AREA_W) + "\n")
+        f.write("Num of episodes: " + str(MAX_GLOBAL_EP) + "\n")
         f.write(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
     start = time.time()
     
@@ -329,6 +327,6 @@ if __name__ == "__main__":
     COORD.join(worker_threads)
     end = time.time()
     with open("train/" + EXPERIMENT_NAME + "/time_taken.txt", "w+") as f:
-        f.write("Total time taken" + str(end-start))
+        f.write("Total time taken: " + str(end-start))
     print "Total time ", (end - start)
 
