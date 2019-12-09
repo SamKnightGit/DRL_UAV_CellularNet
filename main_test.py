@@ -48,8 +48,8 @@ def Run_Test(g_test_net, reward_file_name, tf_session):
     MAX_STEP = 2000
 
     #Reading mobility trace from file
-    test_env = MobiEnvironment(main.N_BS, 40, 100, "read_trace", "./ue_trace_10k.npy")
-
+    # test_env = MobiEnvironment(main.N_BS, 40, 100, "read_trace", "./ue_trace_10k.npy")
+    test_env = MobiEnvironment(main.N_BS, main.N_UE, main.AREA_W)
     #reset states
     s = np.array([np.ravel(test_env.reset())])
 
@@ -121,7 +121,7 @@ def test_network(test_architecture="AC", parameter_folder_name=""):
         test_net = Load_AC_Net(tf_session, parameter_folder_name)
     else: # default to AC
         test_net = Load_AC_Net(tf_session, parameter_folder_name)
-    reward_file_name = "./test/" + parameter_folder_name + "/"
+    reward_file_name = "./test/" + parameter_folder_name + "_group_mm/"
     try:
         os.makedirs(reward_file_name)
     except OSError:

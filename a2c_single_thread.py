@@ -143,6 +143,7 @@ class Worker(object):
         self.name = name
         self.network = network
         self.timesteps_per_rollout = timesteps_per_rollout
+        self.ep_r = 0
 
     def reset_worker(self):
         self.ep_r = 0
