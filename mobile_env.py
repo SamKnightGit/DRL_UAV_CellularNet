@@ -7,6 +7,7 @@ import itertools
 import math
 from channel import *
 from ue_mobility import *
+from collections import namedtuple
 import copy
 import numpy as np
 import sys
@@ -153,7 +154,7 @@ class MobiEnvironment:
         z = np.zeros((np.shape(positions)[0],0))
         self.ueLoc = np.concatenate((positions, z), axis=1).astype(int)
 
-        self.bsLoc = BS_move(self.bsLoc, self.boundaries, action, BS_STEP, MIN_BS_DIST + BS_STEP, N_ACT)
+        self.bsLoc, _ = BS_move(self.bsLoc, self.boundaries, action, BS_STEP, MIN_BS_DIST + BS_STEP, N_ACT)
         self.association_map, meanSINR, nOut = self.channel.UpdateDroneNet(self.ueLoc, self.bsLoc, ifrender, self.step_n)
         
         self.bsLocGrid = GetGridMap(self.grid_n, self.grid_n, self.bsLoc)
@@ -198,11 +199,15 @@ class MobiEnvironment:
             avoid "if--else" in the original function to reduce training
             time cost
             """
-        
-        self.ueLoc = self.ueLoc_trace[self.step_n]
-        self.bsLoc = BS_move(self.bsLoc, self.boundaries, action, BS_STEP, MIN_BS_DIST + BS_STEP, N_ACT)
+        if self.mobility_model == "read_trace":
+            self.ueLoc = self.ueLoc_trace[self.step_n]
+        elif self.mobility_model == "group":
+            positions = next(self.mm)
+            # 2D to 3D
+            z = np.zeros((np.shape(positions)[0], 0))
+            self.ueLoc = np.concatenate((positions, z), axis=1).astype(int)
+        self.bsLoc, act_all = BS_move(self.bsLoc, self.boundaries, action, BS_STEP, MIN_BS_DIST + BS_STEP, N_ACT)
         self.association_map, meanSINR, nOut = self.channel.UpdateDroneNet(self.ueLoc, self.bsLoc, ifrender, self.step_n)
-        
         self.bsLocGrid = GetGridMap(self.grid_n, self.grid_n, self.bsLoc)
         self.ueLocGrid = GetGridMap(self.grid_n, self.grid_n, self.ueLoc)
         
@@ -223,8 +228,8 @@ class MobiEnvironment:
             done = True
     
         reward = max(sum(r_dissect), -1)
-        
-        info = [r_dissect, self.step_n, self.ueLoc]
+        info_tup = namedtuple('info_tup', ['r_dissect', 'step_n', 'ue_loc', 'bs_loc', 'outage_fraction', 'bs_actions'])
+        info = info_tup(r_dissect, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut)/self.nUE, act_all)
         return np.array(self.state), reward, done, info
 
 

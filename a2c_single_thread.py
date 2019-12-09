@@ -24,6 +24,11 @@ LR_C = 0.0001    # learning rate for critic
 GLOBAL_RUNNING_R = []
 GLOBAL_EP = 0
 TENSOR_SEED = 6
+EXPERIMENT_NAME = "A2C_median_SINR"
+try:
+    os.makedirs("./train/" + EXPERIMENT_NAME)
+except OSError:
+    pass
 
 N_BS = 4
 N_UE = 40
@@ -125,18 +130,23 @@ class Coordinator(object):
                     self.network.v_target: buffer_value_target
                 }
                 self.network.update_network(feed_dict)
+
+        np.save("train/" + EXPERIMENT_NAME + "/Global_return", GLOBAL_RUNNING_R)
+        np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA", SESS.run(self.network.actor_params))
         
-            
 
 class Worker(object):
+    global GLOBAL_RUNNING_R
+
     def __init__(self, name, network, timesteps_per_rollout):
-        self.env = MobiEnvironment(N_BS, N_UE, AREA_W)#gym.make(GAME).unwrapped
+        self.env = MobiEnvironment(N_BS, N_UE, AREA_W)
         self.name = name
         self.network = network
         self.timesteps_per_rollout = timesteps_per_rollout
-        # self.buf_r_dissect_all_ep = []
+        self.ep_r = 0
 
-    def reset_env(self):
+    def reset_worker(self):
+        self.ep_r = 0
         self.env.reset()
 
     def work(self):
@@ -145,6 +155,7 @@ class Worker(object):
         for _ in range(self.timesteps_per_rollout):
             action = self.network.choose_action(state)
             state_next, reward, done, _ = self.env.step(action)
+            self.ep_r += reward
             state_next = np.ravel(state_next)
             buffer_state.append(state)
             buffer_action.append(action)
@@ -153,6 +164,11 @@ class Worker(object):
 
         if done:
             value_estimate = 0
+            if len(GLOBAL_RUNNING_R) == 0:  # record running episode reward
+                GLOBAL_RUNNING_R.append(self.ep_r)
+            else:
+                GLOBAL_RUNNING_R.append(0.99 * GLOBAL_RUNNING_R[-1] + 0.01 * self.ep_r)
+            self.reset_worker()
         else:
             value_estimate = SESS.run(
                 self.network.v, 
@@ -184,48 +200,32 @@ if __name__ == "__main__":
     print ">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>"
     
     SESS = tf.Session()
+    with open("train/" + EXPERIMENT_NAME + "/experiment_summary.txt", "w+") as f:
+        f.write("tensor seed: " + str(TENSOR_SEED) + "\n")
+        f.write("N_S " + str(N_S) + "\n")
+        f.write("N_A " + str(N_A) + "\n")
+        f.write("LR_C " + str(LR_C) + "\n")
+        f.write("N_BS " + str(N_BS) + "\n")
+        f.write("N_UE " + str(N_UE) + "\n")
+        f.write("AREA_W " + str(AREA_W) + "\n")
+        f.write("Num of episodes " + str(MAX_GLOBAL_EP) + "\n")
+        f.write(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
 
     start = time.time()
-    
-    with tf.device("/cpu:0"):
-        OPT_A = tf.train.RMSPropOptimizer(LR_A, name='RMSPropA')
-        OPT_C = tf.train.RMSPropOptimizer(LR_C, name='RMSPropC')
-        coordinator = Coordinator(
-            num_workers=1, 
-            timesteps_per_rollout=10, 
-            timesteps_per_episode=200, 
-            num_episodes=50
-        )  # we only need its params
+
+    OPT_A = tf.train.RMSPropOptimizer(LR_A, name='RMSPropA')
+    OPT_C = tf.train.RMSPropOptimizer(LR_C, name='RMSPropC')
+    coordinator = Coordinator(
+        num_workers=4,
+        timesteps_per_rollout=20,
+        timesteps_per_episode=MAXSTEP,
+        num_episodes=MAX_GLOBAL_EP
+    )  # we only need its params
        
-    SESS.run(tf.global_variables_initializer())   
-    coordinator.run()
-
-
-    """
-        workers = []
-        # Create worker
-        for i in range(N_WORKERS):
-            i_name = 'W_%i' % i   # worker namei
-            print "Creating worker ", i_name
-            workers.append(Worker(i_name, GLOBAL_AC))
-
-    COORD = tf.train.Coordinator()
     SESS.run(tf.global_variables_initializer())
-    np.savez("train/Global_A_PARA_init", SESS.run(GLOBAL_AC.actor_params))
+    np.savez("train/" + EXPERIMENT_NAME + "/Global_A_PARA_init", SESS.run(coordinator.network.actor_params))
 
-    if OUTPUT_GRAPH:
-        if os.path.exists(LOG_DIR):
-            shutil.rmtree(LOG_DIR)
-            tf.summary.FileWriter(LOG_DIR, SESS.graph)
-    
-    worker_threads = []
-    for worker in workers:
-        job = lambda: worker.work()
-        t = threading.Thread(target=job)
-        t.start()
-        worker_threads.append(t)
-    COORD.join(worker_threads)
-	
+    coordinator.run()
     end = time.time()
-    print "Total time ", (end - start)
-    """
+    with open("train/" + EXPERIMENT_NAME + "/time_taken.txt", "w+") as f:
+        f.write("Total time taken" + str(end-start))

@@ -4,6 +4,7 @@ import pylab
 import random
 import math
 from numpy.random import rand
+import copy
 
 def WalkNRandomSteps(initCoordinates, boundaries, stepLen, nSteps):
     #creating two array for containing x and y coordinate
@@ -210,8 +211,11 @@ def BS_move(loc, bound, action, stepLen, min_dist, n_action):
     stepLenLong = stepLen*2
    
     for i in range(nBS):
-        
+        # print("Changed location of base_station {}".format(i))
+        # old_location = copy.copy(loc[i])
         val = act_all[i]
+        # print("With action {}".format(val))
+        # print("From location: {}".format(old_location))
         [x, y, z] = loc[i]
         
         if val == 0:
@@ -249,20 +253,22 @@ def BS_move(loc, bound, action, stepLen, min_dist, n_action):
                 y = y - stepLenLong
 
 
-        if_collide = False
+        collision = False
 
         for j in range(nBS):
             if i != j:
                 dist = np.linalg.norm(loc[i]-loc[j]) # verify me
 
                 if dist <= min_dist:
-                    if_collide = True
+                    collision = True
 
-        if not if_collide:
+        if not collision:
             loc[i] = [x, y, z]
-
+        else:
+            print("COLLIDED")
+        # print("To location: {}".format(loc[i]))
 #    print "new location \n", loc
-    return loc
+    return copy.copy(loc), act_all
 
 def UE_rand_move(loc, bound, stepLen):
     
