@@ -15,7 +15,8 @@ import time
 OUTPUT_GRAPH = True
 LOG_DIR = './log'
 N_WORKERS = 4#multiprocessing.cpu_count()
-MAX_GLOBAL_EP = 20
+MAX_GLOBAL_EP = 200
+TIMESTEPS_PER_ROLLOUT = 50
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.9
 ENTROPY_BETA = 0.001
@@ -185,8 +186,6 @@ class Worker(object):
         return buffer_state, buffer_action, buffer_value_target
 
 
-
-
 if __name__ == "__main__":
     print ">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>"
     print "tensor seed: ", TENSOR_SEED
@@ -217,7 +216,7 @@ if __name__ == "__main__":
     OPT_C = tf.train.RMSPropOptimizer(LR_C, name='RMSPropC')
     coordinator = Coordinator(
         num_workers=4,
-        timesteps_per_rollout=20,
+        timesteps_per_rollout=TIMESTEPS_PER_ROLLOUT,
         timesteps_per_episode=MAXSTEP,
         num_episodes=MAX_GLOBAL_EP
     )  # we only need its params
