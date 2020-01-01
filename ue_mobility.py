@@ -3,6 +3,7 @@ import numpy as np
 import pylab
 import random
 import math
+from copy import copy
 from numpy.random import rand
 
 def WalkNRandomSteps(initCoordinates, boundaries, stepLen, nSteps):
@@ -171,12 +172,13 @@ def GetRandomLocationInGrid(gridX_size, gridY_size, num_node, h=0, min_dist=0):
 
 def GetGridMap(gridX_size, gridY_size, nodeLoc):
     """
-        #Generate n random locations in range ((0, gridX_size),(0, gridY_size))
-        input 1) grid size in x
+        # Generate grid array in range ((0, gridX_size),(0, gridY_size))
+        input:
+        1) grid size in x
         2) grid size in y
         3) node locations in (x,y) format
         
-        return heatmap format locations
+        return grid array where 1 represents node presence and 0, absence
         """
     grid = np.zeros((gridX_size, gridY_size))
     
@@ -262,7 +264,7 @@ def BS_move(loc, bound, action, stepLen, min_dist, n_action):
             loc[i] = [x, y, z]
 
 #    print("new location \n", loc
-    return loc
+    return copy(loc), copy(act_all)
 
 def ue_random_move(loc, bound, stepLen):
     
@@ -410,12 +412,12 @@ def reference_point_group(nr_nodes, dimensions, velocity=(0.1, 1.), aggregation=
     
     groups = []
     prev = 0
-    for (i,n) in enumerate(nr_nodes):
+    for (i, n) in enumerate(nr_nodes):
         groups.append(np.arange(prev,n+prev))
         prev += n
     
     g_ref = np.empty(sum(nr_nodes), dtype=np.int)
-    for (i,g) in enumerate(groups):
+    for (i, g) in enumerate(groups):
         for n in g:
             g_ref[n] = i
     
@@ -453,7 +455,7 @@ def reference_point_group(nr_nodes, dimensions, velocity=(0.1, 1.), aggregation=
         g_y = g_y + g_velocity * g_sintheta
         
         if aggregating:
-            for (i,g) in enumerate(groups):
+            for (i, g) in enumerate(groups):
                 
                 # step to group direction + step to group center
                 x_g = x[g]
@@ -467,7 +469,7 @@ def reference_point_group(nr_nodes, dimensions, velocity=(0.1, 1.), aggregation=
             if aggregating == 0: deaggregating = 100
     
         else:
-            for (i,g) in enumerate(groups):
+            for (i, g) in enumerate(groups):
                 
                 # step to group direction + step to group center
                 x_g = x[g]
@@ -514,4 +516,4 @@ def reference_point_group(nr_nodes, dimensions, velocity=(0.1, 1.), aggregation=
             g_fl[g_arrived] = FL_DISTR(g_arrived)
             g_velocity[g_arrived] = VELOCITY_DISTR(g_fl[g_arrived])
 
-        yield np.dstack((x,y))[0]
+        yield np.dstack((x, y))[0]

@@ -39,28 +39,31 @@ N_A = env.action_space_dim
 class ACNet(object):
     def __init__(self, name):
         self.name = name
-        self.actor_model, self.actor_optimizer, self.critic_model, self.critic_optimizer = self._build_net_mlp()
+        self.actor_model, self.actor_output_layer, self.actor_optimizer, \
+            self.critic_model, self.critic_output_layer, self.critic_optimizer = self._build_net_mlp()
 
     def get_actor_gradients(self, value_target, action_history):
-        temporal_difference = tf.subtract(value_target, self.critic_model)
-        log_probability = tf.reduce_sum(
-            tf.math.log(self.actor_model + 1e-5) * tf.one_hot(action_history, N_A, 
-            dtype=tf.float32), 
-            axis=1, 
-            keep_dims=True
-        )
-        
-        exp_value = log_probability * tf.stop_gradient(temporal_difference)
-        entropy = -tf.reduce_sum(self.actor_model * tf.math.log(self.actor_model + 1e-5), axis=1, keep_dims=True)
-        entropy *= ENTROPY_BETA
-        exp_value += entropy
-        actor_loss = tf.reduce_mean(-exp_value)
-        return tf.gradients(actor_loss, self.actor_model.trainable_variables)
+        with tf.GradientTape() as tape:
+            advantage = tf.subtract(value_target, self.critic_model.output)
+            log_probability = tf.math.log(
+                tf.reduce_sum(
+                    self.actor_model.output * tf.one_hot(action_history, N_A, dtype=tf.float32), axis=1, keepdims=True
+                ) + 1e-10
+            )
 
-    def get_critic_gradients(self, value_target):
-        temporal_difference = tf.subtract(value_target, self.critic_model)
-        critic_loss = tf.reduce_mean(tf.square(temporal_difference))
-        return tf.gradients(critic_loss, self.critic_model.trainable_variables)
+            actor_loss = log_probability * tf.stop_gradient(advantage)
+            entropy = tf.reduce_sum(self.actor_model.output * tf.math.log(self.actor_model.output + 1e-10), axis=1, keepdims=True)
+            entropy *= ENTROPY_BETA
+            actor_loss += entropy
+            actor_loss = tf.reduce_mean(-actor_loss)
+        return tape.gradient(actor_loss, self.actor_model.trainable_variables)
+
+    def get_critic_loss(self, value_target):
+        critic_value = self.critic_output_layer.output
+
+        temporal_difference = tf.subtract(value_target, critic_value)
+        critic_loss = tf.math.reduce_mean(tf.square(temporal_difference))
+        return critic_loss
 
     def _build_net_mlp(self):
         print("build MLP net")
@@ -71,38 +74,40 @@ class ACNet(object):
             tf.keras.layers.Dense(N_A, tf.nn.softmax, kernel_initializer=w_init)
         ])
         actor_optimizer = tf.keras.optimizers.RMSprop(learning_rate=LR_A)
+        actor_output_layer = actor_model.layers[-1]
 
         critic_model = tf.keras.Sequential([
             tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init, input_shape=(None, N_S)),
             tf.keras.layers.Dense(200, tf.nn.relu6, kernel_initializer=w_init),
             tf.keras.layers.Dense(1, kernel_initializer=w_init)
         ])
+        critic_output_layer = critic_model.layers[-1]
         critic_optimizer = tf.keras.optimizers.RMSprop(learning_rate=LR_C)
 
-        return actor_model, actor_optimizer, critic_model, critic_optimizer
-
+        return actor_model, actor_output_layer, actor_optimizer, critic_model, critic_output_layer, critic_optimizer
 
     def update_global(self, global_network, value_target, action_history):
+        actor_gradient = self.get_actor_gradients(value_target, action_history)
+        print(actor_gradient)
         global_network.actor_optimizer.apply_gradients(
-            zip(self.get_actor_gradients(value_target, action_history), global_network.actor_model.trainable_variables)
+            zip(actor_gradient, global_network.actor_model.trainable_variables)
         )
+
+        with tf.GradientTape() as tape:
+            critic_loss = self.get_critic_loss(value_target)
+        critic_gradient = tape.gradient(critic_loss, self.critic_model.trainable_variables)
         global_network.critic_optimizer.apply_gradients(
-            zip(self.get_critic_gradients(value_target), global_network.critic_model.trainable_variables)
+            zip(critic_gradient, global_network.critic_model.trainable_variables)
         )
-    
-    @tf.function
+
     def pull_from_global(self, global_network):  # run by a local
-        actor_params = [local_params.assign(global_params) for local_params, global_params in 
-                            zip(self.actor_model.trainable_variables, global_network.actor_model.trainable_variables)]
-        critic_params = [local_params.assign(global_params) for local_params, global_params in 
-                            zip(self.critic_model.trainable_variables, global_network.critic_model.trainable_variables)]
-        return actor_params, critic_params
+        self.actor_model.set_weights(global_network.actor_model.get_weights())
+        self.critic_model.set_weights(global_network.critic_model.get_weights())
 
-
-    @tf.function
     def choose_action(self, s):  # run by a local
+        s = np.expand_dims(s, axis=0)
         prob_weights = self.actor_model.predict(s[np.newaxis, :], steps=1)
-        action = np.random.choice(range(prob_weights.shape[1]),
+        action = np.random.choice(range(prob_weights.shape[2]),
                                   p=prob_weights.ravel())  # select action w.r.t the actions prob
         return action
 
@@ -156,7 +161,8 @@ class Worker(object):
                     if done:
                         v_s_ = 0   # terminal
                     else:
-                        v_s_ = self.AC.critic_model.predict(s_[np.newaxis, :])[0, 0]
+                        s = np.expand_dims(s_, axis=0)
+                        v_s_ = self.AC.critic_model.predict(s[np.newaxis, :])[0, 0]
                     buffer_v_target = []
                     
                     for r in buffer_r[::-1]:    # reverse buffer r
@@ -166,11 +172,7 @@ class Worker(object):
                     buffer_v_target.reverse()
                     
                     buffer_s, buffer_a, buffer_v_target = np.vstack(buffer_s), np.array(buffer_a), np.vstack(buffer_v_target)
-                    # feed_dict = {
-                    #     self.AC.s: buffer_s,
-                    #     self.AC.a_his: buffer_a,
-                    #     self.AC.v_target: buffer_v_target,
-                    # }
+
                     self.AC.update_global(self.global_network, buffer_v_target, buffer_a)
                     
                     buffer_s, buffer_a, buffer_r = [], [], []
@@ -209,43 +211,42 @@ class Worker(object):
                     break
 
 
-if __name__ == "__main__":
-    print(">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>")
-    print("tensor seed: ", TENSOR_SEED)
-    print("N_S", N_S)
-    print("N_A", N_A)
-    print("LR_C", LR_C)
-    print("N_BS", N_BS)
-    print("N_UE", N_UE)
-    print("AREA_W", AREA_W)
-    print("Num of episodes", MAX_GLOBAL_EP)
-    print("(if cnn), num of filters", CNN_NUM_FILTERS)
-    print("(if cnn), num of filters", CNN_KERNEL_SIZE)
-    print(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
-    
-    start = time.time()
-    
-    with tf.device("/cpu:0"):
-        GLOBAL_AC = ACNet(name="GLOBAL")  # we only need its params
-
-
-        workers = []
-        # Create worker
-        for i in range(N_WORKERS):
-            i_name = 'W_%i' % i   # worker namei
-            print("Creating worker ", i_name)
-            workers.append(Worker(i_name, GLOBAL_AC))
-
-    COORD = tf.train.Coordinator()
-    
-    worker_threads = []
-    for worker in workers:
-        job = lambda: worker.work()
-        t = threading.Thread(target=job)
-        t.start()
-        worker_threads.append(t)
-    COORD.join(worker_threads)
-	
-    end = time.time()
-    print("Total time ", (end - start))
+# if __name__ == "__main__":
+#     print(">>>>>>>>>>>>>>>>A3C SIM INFO>>>>>>>>>>>>>>>>>>>>")
+#     print("tensor seed: ", TENSOR_SEED)
+#     print("N_S", N_S)
+#     print("N_A", N_A)
+#     print("LR_C", LR_C)
+#     print("N_BS", N_BS)
+#     print("N_UE", N_UE)
+#     print("AREA_W", AREA_W)
+#     print("Num of episodes", MAX_GLOBAL_EP)
+#     print("(if cnn), num of filters", CNN_NUM_FILTERS)
+#     print("(if cnn), num of filters", CNN_KERNEL_SIZE)
+#     print(">>>>>>>>>>>>>>>>>>>>SIM INFO(end)>>>>>>>>>>>>>>>")
+#
+#     start = time.time()
+#
+#     with tf.device("/cpu:0"):
+#         GLOBAL_AC = ACNet(name="GLOBAL")  # we only need its params
+#
+#
+#         workers = []
+#         # Create worker
+#         for i in range(N_WORKERS):
+#             i_name = 'W_%i' % i   # worker namei
+#             print("Creating worker ", i_name)
+#             workers.append(Worker(i_name, GLOBAL_AC))
+#
+#     COORD = tf.train.Coordinator()
+#
+#     worker_threads = []
+#     for worker in workers:
+#         job = lambda: worker.work()
+#         t = threading.Thread(target=job)
+#         t.start()
+#         worker_threads.append(t)
+#     COORD.join(worker_threads)
+#     end = time.time()
+#     print("Total time ", (end - start))
 

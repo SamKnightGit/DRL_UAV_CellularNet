@@ -1,8 +1,9 @@
 /.vscode
+/.idea
 /venv
 /venv3
 /train
-/test
+/experiment
 /.ipynb_checkpoints
 *.pyc
 
