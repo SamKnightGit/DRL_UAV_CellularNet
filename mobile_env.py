@@ -108,18 +108,18 @@ class MobiEnvironment:
         if (self.mobility_model == "random_waypoint") or (self.mobility_model == "group"):
             positions = next(self.mm)
             #2D to 3D
-            z = np.zeros((np.shape(positions)[0],0))
-            self.ueLoc = np.concatenate((positions, z), axis=1).astype(int)
+            user_height = np.zeros((np.shape(positions)[0], 1))
+            self.ueLoc = np.append(positions, user_height, axis=1).astype(int)
             self.ueLocGrid = GetGridMap(self.grid_n, self.grid_n, self.ueLoc)
-     
+
         self.channel = LTEChannel(self.nUE, self.nBS, self.boundaries, self.ueLoc, self.bsLoc)
-        self.association = self.channel.GetCurrentAssociationMap(self.ueLoc)
+        # self.association = self.channel.GetCurrentAssociationMap(self.ueLoc)
 
         
         self.action_space_dim = N_ACT**self.nBS
-        self.observation_space_dim = self.grid_n * self.grid_n * (nBS + 1) * MAX_UE_PER_GRID
+        self.observation_space_dim = 3 * (self.nBS + self.nUE)
 
-        self.state = np.zeros((nBS + 1, self.grid_n, self.grid_n))
+        self.state = np.zeros((self.nBS + self.nUE, 3))
         self.step_n = 0
     
 
@@ -146,12 +146,8 @@ class MobiEnvironment:
             self.ueLoc, self.ueLocGrid = GetRandomLocationInCellCoverage(self.grid_n, self.grid_n, R_BS,  self.bsLoc, self.nUE)
 
         self.channel.reset(self.ueLoc, self.bsLoc)
-        self.association = self.channel.GetCurrentAssociationMap(self.ueLoc)
-        
-        self.state[0] = self.bsLocGrid
-        # self.state[1:] = self.association
-        self.state[1] = self.ueLocGrid
-
+        # self.association = self.channel.GetCurrentAssociationMap(self.ueLoc)
+        self.state = np.concatenate((self.bsLoc, self.ueLoc))
         self.step_n = 0
         
         return np.array(self.state)
@@ -169,15 +165,13 @@ class MobiEnvironment:
         self.bsLocGrid = GetGridMap(self.grid_n, self.grid_n, self.bsLoc)
         self.ueLocGrid = GetGridMap(self.grid_n, self.grid_n, self.ueLoc)
         
-        r_dissect = []
-        
-        r_dissect.append(meanSINR/20)
+        # r_dissect = []
+        #
+        # r_dissect.append(meanSINR/20)
 
-        r_dissect.append(-1.0 * nOut/self.nUE)
+        # r_dissect.append(-1.0 * nOut/self.nUE)
         
-        self.state[0] = self.bsLocGrid
-        # self.state[1:] = self.association_map
-        self.state[1] = self.ueLocGrid
+        self.state = np.concatenate((self.bsLoc, self.ueLoc))
 
         done = False
 
@@ -186,10 +180,11 @@ class MobiEnvironment:
         if self.step_n >= MAXSTEP:
             done = True
 
-        reward = max(sum(r_dissect), -1)
+        # reward = max(sum(r_dissect), -1)
+        reward = meanSINR/200
 
         info_tup = namedtuple('info_tup', ['r_dissect', 'step_n', 'ue_loc', 'bs_loc', 'outage_fraction', 'bs_actions'])
-        info = info_tup(r_dissect, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut) / self.nUE, bsActions)
+        info = info_tup(reward, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut) / self.nUE, bsActions)
         return np.array(self.state), reward, done, info
     
     def step_test(self, action, ifrender=False): #(step)
@@ -212,15 +207,13 @@ class MobiEnvironment:
         self.bsLocGrid = GetGridMap(self.grid_n, self.grid_n, self.bsLoc)
         self.ueLocGrid = GetGridMap(self.grid_n, self.grid_n, self.ueLoc)
         
-        r_dissect = []
-        
-        r_dissect.append(meanSINR/20)
-        
-        r_dissect.append(-1.0 * nOut/self.nUE)
+        # r_dissect = []
+        #
+        # r_dissect.append(meanSINR/20)
+        #
+        # r_dissect.append(-1.0 * nOut/self.nUE)
 
-        self.state[0] = self.bsLocGrid
-        # self.state[1:] = self.association_map
-        self.state[1] = self.ueLocGrid
+        self.state = np.concatenate((self.bsLoc, self.ueLoc))
         
         done = False
         
@@ -229,10 +222,11 @@ class MobiEnvironment:
         if self.step_n >= MAXSTEP:
             done = True
     
-        reward = max(sum(r_dissect), -1)
+        # reward = max(sum(r_dissect), -1)
+        reward = meanSINR/200
 
         info_tup = namedtuple('info_tup', ['r_dissect', 'step_n', 'ue_loc', 'bs_loc', 'outage_fraction', 'bs_actions'])
-        info = info_tup(r_dissect, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut) / self.nUE, bsActions)
+        info = info_tup(reward, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut) / self.nUE, bsActions)
         return np.array(self.state), reward, done, info
 
 

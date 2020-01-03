@@ -5,7 +5,7 @@ import tensorflow as tf
 import click
 import matplotlib.pyplot as plt
 from datetime import datetime
-from time import time
+from time import time, sleep
 from tqdm import tqdm
 from queue import Queue
 from mobile_env import MobiEnvironment
@@ -24,6 +24,7 @@ from mobile_env import MobiEnvironment
 @click.option('--test_model', type=bool, default=True)
 @click.option('--test_episodes', type=int, default=100)
 @click.option('--render_testing', type=bool, default=False)
+@click.option('--random_seed', type=int, default=None)
 def run_training(
         num_base_stations,
         num_users,
@@ -36,9 +37,12 @@ def run_training(
         model_directory,
         test_model,
         test_episodes,
-        render_testing):
+        render_testing,
+        random_seed):
+    if random_seed is not None:
+        tf.random.set_seed(random_seed)
 
-    env = MobiEnvironment(num_base_stations, num_users, arena_width)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
@@ -74,6 +78,7 @@ def run_training(
     for worker in workers:
         print(f"Starting Worker: {worker.name}")
         worker.start()
+        sleep(0.1)
 
     moving_average_rewards = []
     while True:
@@ -98,7 +103,10 @@ def run_training(
                   num_base_stations,
                   num_users,
                   arena_width,
+                  random_seed,
+                  global_network,
                   filename="summary.txt")
+
     plt.plot(moving_average_rewards)
     plt.ylabel('Moving average reward')
     plt.xlabel('Episode')
@@ -110,12 +118,17 @@ def run_training(
         print("Running tests with checkpoint policies...")
         for checkpoint in tqdm(range(num_checkpoints + 1)):
             if checkpoint == num_checkpoints:
+                model_file_path = os.path.join(
+                    model_directory,
+                    "best_model.h5"
+                )
                 checkpoint = "best"
-
-            model_file_path = os.path.join(
-                model_directory,
-                f"checkpoint_{checkpoint}.h5"
-            )
+            else:
+                model_file_path = os.path.join(
+                    model_directory,
+                    f"checkpoint_{checkpoint}",
+                    "model.h5"
+                )
 
             test_file_path = os.path.join(
                 test_dir,
@@ -131,7 +144,8 @@ def run_training(
                 test_episodes,
                 model_file_path,
                 test_file_path,
-                render_testing
+                render_testing,
+                random_seed
             )
 
 
@@ -142,9 +156,12 @@ def run_testing(
         max_episodes,
         model_file,
         test_file_name,
-        render):
+        render,
+        random_seed):
+    if random_seed is not None:
+        tf.random.set_seed(random_seed)
 
-    env = MobiEnvironment(num_base_stations, num_users, arena_width)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
@@ -179,6 +196,8 @@ def write_summary(
         num_base_stations,
         num_users,
         arena_width,
+        random_seed,
+        global_network,
         filename="summary.txt"):
     filepath = os.path.join(model_directory, filename)
     with open(filepath, "w+") as fp:
@@ -190,6 +209,11 @@ def write_summary(
         fp.write(f"Number of Base Stations:".ljust(35) + f"{num_base_stations}\n")
         fp.write(f"Number of Users:".ljust(35) + f"{num_users}\n")
         fp.write(f"Arena Width:".ljust(35) + f"{arena_width}\n")
+        fp.write(f"Random Seed:".ljust(35) + f"{random_seed}\n")
+        fp.write("Network Architecture:\n")
+        global_network.summary(print_fn=lambda summ: fp.write(summ + "\n"))
+
+
 
 
 if __name__ == "__main__":

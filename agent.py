@@ -55,24 +55,52 @@ class Worker(threading.Thread):
         self.episodes_per_checkpoint = int(max_episodes / num_checkpoints)
         self.reward_queue = reward_queue
         self.save_dir = save_dir
-        os.makedirs(save_dir, exist_ok=True)
+        for checkpoint in range(num_checkpoints):
+            os.makedirs(os.path.join(save_dir, f"checkpoint_{checkpoint}"), exist_ok=True)
         self.global_network = global_network
         self.local_network = model.A3CNetwork(self.state_space, self.action_space)
 
+        self.reward_breakdown = []
+        self.base_station_locations = []
+        self.actions = []
+        self.base_station_actions = []
+        self.user_locations = []
+        self.outage_fraction = []
+
     def _save_global_weights(self, filename):
-        with Worker.save_lock:
-            self.global_network.save_weights(
-                os.path.join(
-                    self.save_dir,
-                    filename
-                )
-            )
+        self.global_network.save_weights(filename)
 
     def _get_next_episode(self):
         with Worker.checkpoint_lock:
             episode = Worker.global_episode
             Worker.global_episode += 1
         return episode
+
+    def _clear_info(self):
+        self.reward_breakdown = []
+        self.base_station_locations = []
+        self.actions = []
+        self.base_station_actions = []
+        self.user_locations = []
+        self.outage_fraction = []
+
+    def _record_info(self, info, real_action):
+        self.reward_breakdown.append(info.r_dissect)
+        self.base_station_locations.append(info.bs_loc)
+        self.actions.append(real_action)
+        self.base_station_actions.append(info.bs_actions)
+        self.user_locations.append(info.ue_loc)
+        self.outage_fraction.append(info.outage_fraction)
+
+    def _save_info(self, checkpoint):
+        checkpoint_dir = os.path.join(self.save_dir, f"checkpoint_{checkpoint}")
+        np.save(os.path.join(checkpoint_dir, "reward_breakdown"), self.reward_breakdown)
+        np.save(os.path.join(checkpoint_dir, "base_station_locations"), self.base_station_locations)
+        np.save(os.path.join(checkpoint_dir, "base_station_actions"), self.base_station_actions)
+        np.save(os.path.join(checkpoint_dir, "instructed_actions"), self.actions)
+        np.save(os.path.join(checkpoint_dir, "user_locations"), self.user_locations)
+        np.save(os.path.join(checkpoint_dir, "outage_fraction"), self.outage_fraction)
+        self._clear_info()
 
     def run(self):
         history = History()
@@ -99,13 +127,16 @@ class Worker(threading.Thread):
                         print(current_state[np.newaxis, :])
 
                 action = np.random.choice(self.action_space, p=action_prob)
-                new_state, reward, done, _ = self.env.step(action)
+                new_state, reward, done, info = self.env.step(action)
                 new_state = np.ravel(new_state)
                 if done:
                     reward = -1
                 ep_reward += reward
 
                 history.append(current_state, action, reward)
+
+                if self.worker_index == 0:
+                    self._record_info(info, action)
 
                 if update_counter == self.update_frequency or done:
                     with tf.GradientTape() as tape:
@@ -123,29 +154,42 @@ class Worker(threading.Thread):
                 current_state = new_state
 
             current_checkpoint = int(global_episode / self.episodes_per_checkpoint)
-            checkpoint_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}.h5")
-            if ep_reward >= Worker.best_checkpoint_score:
-                if ep_reward >= Worker.best_score:
-                    print(f"New global best score of {ep_reward} achieved by Worker {self.name}!")
-                    self._save_global_weights('checkpoint_best.h5')
-                    print(f"Saved global best model at: {os.path.join(self.save_dir, 'checkpoint_best.h5')}")
-                    Worker.best_score = ep_reward
-                print(f"New checkpoint best score of {ep_reward} achieved by Worker {self.name}!")
-                self._save_global_weights(f"checkpoint_{current_checkpoint}.h5")
-                print(f"Saved checkpoint best model at: {checkpoint_path}")
-                Worker.best_checkpoint_score = ep_reward
+            checkpoint_model_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}", "model.h5")
+            global_model_path = os.path.join(self.save_dir, "best_model.h5")
+            with Worker.save_lock:
+                if ep_reward >= Worker.best_checkpoint_score:
+                    if ep_reward >= Worker.best_score:
+                        print(f"New global best score of {ep_reward} achieved by Worker {self.name}!")
+                        self.global_network.save_weights(global_model_path)
+                        print(
+                            "Saved global best model at: " +
+                            f"{os.path.join(self.save_dir, 'checkpoint_best.h5')}"
+                        )
+                        Worker.best_score = ep_reward
+                    print(f"New checkpoint best score of {ep_reward} achieved by Worker {self.name}!")
+                    self._save_global_weights(checkpoint_model_path)
+                    print(f"Saved checkpoint best model at: {checkpoint_model_path}")
+                    Worker.best_checkpoint_score = ep_reward
 
-            if not os.path.exists(checkpoint_path):
-                self._save_global_weights(f"checkpoint_{current_checkpoint}.h5")
-                Worker.best_checkpoint_score = 0
+                if not os.path.exists(checkpoint_model_path):
+                    self._save_global_weights(checkpoint_model_path)
+                    Worker.best_checkpoint_score = 0
 
-            if Worker.global_average_running_reward == 0:
-                Worker.global_average_running_reward = ep_reward
-            else:
-                Worker.global_average_running_reward = Worker.global_average_running_reward * 0.99 + ep_reward * 0.01
-            self.reward_queue.put(Worker.global_average_running_reward)
+                if Worker.global_average_running_reward == 0:
+                    Worker.global_average_running_reward = ep_reward
+                else:
+                    Worker.global_average_running_reward = Worker.global_average_running_reward * 0.99 + ep_reward * 0.01
+                self.reward_queue.put(Worker.global_average_running_reward)
             global_episode = self._get_next_episode()
             ep_reward = 0
+
+            checkpoint_np_file = os.path.join(
+                self.save_dir,
+                f"checkpoint_{current_checkpoint}",
+                "reward_breakdown.npy"
+            )
+            if self.worker_index == 0 and not os.path.exists(checkpoint_np_file):
+                self._save_info(current_checkpoint)
         self.reward_queue.put(None)
 
 
@@ -181,7 +225,6 @@ class TestWorker(threading.Thread):
         self.base_station_actions.append(info.bs_actions)
         self.user_locations.append(info.ue_loc)
         self.outage_fraction.append(info.outage_fraction)
-
 
     def _save_info(self):
         test_dir = os.path.dirname(self.test_file_name)

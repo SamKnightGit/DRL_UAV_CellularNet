@@ -112,7 +112,7 @@ class LTEChannel:
     def reset(self, ueLoc, bsLoc):
         self.current_BS, self.current_BS_sinr = self.GetBestDlBS(ueLoc, bsLoc) #self.init_BS
         self.bestBS_buf = [self.current_BS]
-        self.ue_out = np.where(self.current_BS_sinr<= OUT_THRESH)
+        self.ue_out = np.where(self.current_BS_sinr <= OUT_THRESH)
 
 
     def GetBestDlBS(self, ueLoc, bsLoc):
@@ -209,8 +209,8 @@ class LTEChannel:
         #        print("mean DL and UL Rate Per Channel \n", dl_rate_mean, ul_rate_mean
 
 
-        association_map = self.GetCurrentAssociationMap(ueLoc)
-
+        # association_map = self.GetCurrentAssociationMap(ueLoc)
+        association_map = None
 #        print self.current_BS_sinr, "\n mean sinr", np.mean(self.current_BS_sinr)
         return association_map, np.mean(self.current_BS_sinr), n_outage
 
