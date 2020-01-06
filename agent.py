@@ -30,6 +30,7 @@ class Worker(threading.Thread):
     best_checkpoint_score = 0
     save_lock = threading.Lock()
     checkpoint_lock = threading.Lock()
+    update_lock = threading.Lock()
 
     def __init__(self,
                  worker_index,
@@ -40,6 +41,7 @@ class Worker(threading.Thread):
                  max_episodes,
                  optimizer,
                  update_frequency,
+                 norm_clip_value,
                  num_checkpoints,
                  reward_queue,
                  save_dir):
@@ -51,7 +53,8 @@ class Worker(threading.Thread):
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
         self.optimizer = optimizer
-        self.update_frequency = update_frequency
+        self.update_frequency = update_frequency,
+        self.norm_clip_value = norm_clip_value
         self.episodes_per_checkpoint = int(max_episodes / num_checkpoints)
         self.reward_queue = reward_queue
         self.save_dir = save_dir
@@ -139,13 +142,15 @@ class Worker(threading.Thread):
                     self._record_info(info, action)
 
                 if update_counter == self.update_frequency or done:
-                    with tf.GradientTape() as tape:
-                        local_loss = self.local_network.get_loss(done, new_state, history)
-                    local_gradients = tape.gradient(local_loss, self.local_network.trainable_weights)
-                    self.optimizer.apply_gradients(
-                        zip(local_gradients, self.global_network.trainable_weights)
-                    )
-                    self.local_network.set_weights(self.global_network.get_weights())
+                    with Worker.update_lock:
+                        with tf.GradientTape() as tape:
+                            local_loss = self.local_network.get_loss(done, new_state, history)
+                        local_gradients = tape.gradient(local_loss, self.local_network.trainable_weights)
+                        local_gradients, _ = tf.clip_by_global_norm(local_gradients, self.norm_clip_value)
+                        self.optimizer.apply_gradients(
+                            zip(local_gradients, self.global_network.trainable_weights)
+                        )
+                        self.local_network.set_weights(self.global_network.get_weights())
 
                     history.clear()
                     update_counter = 0

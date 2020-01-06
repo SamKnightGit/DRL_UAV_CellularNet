@@ -1,3 +1,8 @@
+import os
+import sys
+os.chdir("/home/sam/Documents/Dissertation/drones")
+sys.path.append(".")
+
 import mobile_env
 import numpy as np
 
@@ -9,8 +14,8 @@ def test_bs_locations():
     #     get_action(i)
     #     mobi_env.step(i)
     #     print(mobi_env.bsLoc)
-    for i in range(10):
-        new_state, reward, done, info = mobi_env.step_test(3)
+    for _ in range(10):
+        _, reward, _, _ = mobi_env.step_test(3)
         print(f"Reward: {reward}")
         print(f"Base Station: {mobi_env.bsLoc}")
         print(f"Users: {mobi_env.ueLoc}")
@@ -27,6 +32,15 @@ def test_state_space():
     new_state, reward, done, info = mobi_env.step_test(3)
     print(new_state.shape)
 
+def test_rewards():
+    mobi_env = mobile_env.MobiEnvironment(1, 1, 100, random_seed=2)
+    print(f"Base Station: {mobi_env.bsLoc}")
+    print(f"Users: {mobi_env.ueLoc}")
+    for _ in range(10):
+        new_state, reward, _, _ = mobi_env.step(4)
+        print(f"New State: {new_state}")
+        print(f"Reward: {reward}")
+
 
 def get_action(action):
     if action == 0.0:
@@ -42,4 +56,4 @@ def get_action(action):
 
 
 if __name__ == "__main__":
-    test_state_space()
+    test_rewards()

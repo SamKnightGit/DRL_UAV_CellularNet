@@ -19,6 +19,7 @@ from mobile_env import MobiEnvironment
 @click.option('--max_episodes', type=int, default=100)
 @click.option('--learning_rate', type=float, default=1e-3)
 @click.option('--network_update_frequency', type=int, default=50)
+@click.option('--norm_clip_value', type=float, default=0.5)
 @click.option('--num_checkpoints', type=int, default=10)
 @click.option('--model_directory', type=click.Path(), default="")
 @click.option('--test_model', type=bool, default=True)
@@ -33,6 +34,7 @@ def run_training(
         max_episodes,
         learning_rate,
         network_update_frequency,
+        norm_clip_value,
         num_checkpoints,
         model_directory,
         test_model,
@@ -69,6 +71,7 @@ def run_training(
             max_episodes,
             optimizer,
             network_update_frequency,
+            norm_clip_value,
             num_checkpoints,
             reward_queue,
             model_directory

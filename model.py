@@ -13,7 +13,7 @@ class A3CNetwork(tf.keras.Model):
         self.value_weight = value_weight
         self.entropy_coefficient = entropy_coefficient
 
-        # self.dense_shared_1 = layers.Dense(200, activation='relu')
+        self.dense_shared_1 = layers.Dense(1000, activation='relu')
         self.dense_value_hidden = layers.Dense(100, activation='relu')
         self.dense_critic_hidden = layers.Dense(100, activation='relu')
         self.policy_log_odds = layers.Dense(self.action_space)
@@ -22,9 +22,9 @@ class A3CNetwork(tf.keras.Model):
         self(tf.convert_to_tensor(np.random.random((1, self.state_space)), dtype=tf.float32))
 
     def call(self, inputs):
-        # shared_output = self.dense_shared_1(inputs)
-        policy_output = self.dense_critic_hidden(inputs)
-        log_odds = self.policy_log_odds(policy_output)
+        shared_output = self.dense_shared_1(inputs)
+        policy_output = self.dense_critic_hidden(shared_output)
+        log_odds = self.policy_log_odds(shared_output)
 
         value_output = self.dense_value_hidden(inputs)
         value = self.value(value_output)
