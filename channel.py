@@ -10,7 +10,7 @@ class LTEChannel:
     """
     LTE channel class including simulation of LTE downlink and uplink channels 
     """
-    def __init__(self, nUE, nBS, boundaries, init_ueLoc, init_bsLoc):
+    def __init__(self, nUE, nBS, boundaries, init_ueLoc, init_bsLoc, noise=False):
         
         [self.xMin, self.xMax, self.yMin, self.yMax] = boundaries
         self.gridX = self.xMax - self.xMin + 1
@@ -19,6 +19,7 @@ class LTEChannel:
         self.nUE = nUE
         self.nBS = nBS
         self.gridWidth = 5
+        self.noise = noise
 
         # FDD ratio
         self.alpha = 0.5
@@ -57,7 +58,7 @@ class LTEChannel:
         self.P_ue_watt = 10 **(self.P_ue_dbm / float(10)) * 1e-3 #UE Tx power in W
         self.P_bs_watt = 10 **(self.P_bs_dbm/ float(10)) * 1e-3  #BS Tx power in W
         self.noise_watt = 10 **(self.noise_dbm / float(10)) * 1e-3
-        
+
         self.sc_ofdm = 12 #nbr of data subcarriers/subchannel bandwidth
         self.sy_ofdm = 14 #nbr of ofdm symbols/subframe
         self.t_subframe = 1e-3 #subframe durantion in s
@@ -166,7 +167,7 @@ class LTEChannel:
                 self.current_BS[ue] = self.bestBS_buf[-1][ue]
         
         #compute number of ue out of coverage
-        ue_out = np.array(np.where(self.current_BS_sinr<= OUT_THRESH))
+        ue_out = np.array(np.where(self.current_BS_sinr <= OUT_THRESH))
         new_out = ue_out[np.isin(ue_out, self.ue_out, invert=True)]
 
         self.ue_out = ue_out
@@ -236,7 +237,10 @@ class LTEChannel:
     def GetChannelGain(self, coord1, coord2):
         d = self.GetDistance(coord1, coord2)
         pathLoss = self.GetPassLoss(d)
-        fading = np.random.normal(self.shadowing_mean, self.shadowing_sd)
+        if self.noise:
+            fading = np.random.normal(self.shadowing_mean, self.shadowing_sd)
+        else:
+            fading = 0
         #     fading = 10 #static fading >> for calibration only!!!
         #     print fading
         # the channel gain between UE and BS accounts for

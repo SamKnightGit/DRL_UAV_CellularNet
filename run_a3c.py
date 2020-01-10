@@ -17,9 +17,10 @@ from mobile_env import MobiEnvironment
 @click.option('--arena_width', type=int, default=100)
 @click.option('--num_workers', type=int, default=1)
 @click.option('--max_episodes', type=int, default=100)
-@click.option('--learning_rate', type=float, default=1e-3)
+@click.option('--learning_rate', type=float, default=10e-3)
 @click.option('--network_update_frequency', type=int, default=50)
-@click.option('--norm_clip_value', type=float, default=0.5)
+@click.option('--entropy_coefficient', type=float, default=0.01)
+@click.option('--norm_clip_value', type=float, default=None)
 @click.option('--num_checkpoints', type=int, default=10)
 @click.option('--model_directory', type=click.Path(), default="")
 @click.option('--test_model', type=bool, default=True)
@@ -34,6 +35,7 @@ def run_training(
         max_episodes,
         learning_rate,
         network_update_frequency,
+        entropy_coefficient,
         norm_clip_value,
         num_checkpoints,
         model_directory,
@@ -49,7 +51,8 @@ def run_training(
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
         state_space=state_space,
-        action_space=action_space
+        action_space=action_space,
+        entropy_coefficient=entropy_coefficient
     )
 
     if not model_directory:
@@ -71,6 +74,7 @@ def run_training(
             max_episodes,
             optimizer,
             network_update_frequency,
+            entropy_coefficient,
             norm_clip_value,
             num_checkpoints,
             reward_queue,
@@ -102,6 +106,8 @@ def run_training(
                   max_episodes,
                   learning_rate,
                   network_update_frequency,
+                  entropy_coefficient,
+                  norm_clip_value,
                   time_taken,
                   num_base_stations,
                   num_users,
@@ -195,6 +201,8 @@ def write_summary(
         max_episodes,
         learning_rate,
         network_update_frequency,
+        entropy_coefficient,
+        norm_clip_value,
         time_taken,
         num_base_stations,
         num_users,
@@ -208,6 +216,8 @@ def write_summary(
         fp.write(f"Training Episodes:".ljust(35) + f"{max_episodes}\n")
         fp.write(f"Learning Rate:".ljust(35) + f"{learning_rate}\n")
         fp.write(f"Network Update Frequency:".ljust(35) + f"{network_update_frequency}\n")
+        fp.write(f"Entropy Coefficient:".ljust(35) + f"{entropy_coefficient}\n")
+        fp.write(f"Norm Clip Value:".ljust(35) + f"{norm_clip_value}\n")
         fp.write(f"Time Taken:".ljust(35) + f"{time_taken}\n")
         fp.write(f"Number of Base Stations:".ljust(35) + f"{num_base_stations}\n")
         fp.write(f"Number of Users:".ljust(35) + f"{num_users}\n")

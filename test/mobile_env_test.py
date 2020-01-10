@@ -1,6 +1,6 @@
 import os
 import sys
-os.chdir("/home/sam/Documents/Dissertation/drones")
+os.chdir("/home/samdknight/Documents/Edinburgh/Diss2019/DRL_UAV_CellularNet")
 sys.path.append(".")
 
 import mobile_env
@@ -36,10 +36,15 @@ def test_rewards():
     mobi_env = mobile_env.MobiEnvironment(1, 1, 100, random_seed=2)
     print(f"Base Station: {mobi_env.bsLoc}")
     print(f"Users: {mobi_env.ueLoc}")
-    for _ in range(10):
-        new_state, reward, _, _ = mobi_env.step(4)
-        print(f"New State: {new_state}")
-        print(f"Reward: {reward}")
+    for i in range(10):
+        new_state, reward, _, _ = mobi_env.step(1)
+        print(f"Moving closer: {i}")
+        # print(new_state)
+        average_reward = 0
+        for _ in range(10):
+            new_state, reward, _, _ = mobi_env.step(4)
+            average_reward += reward
+        print(f"Average reward: {average_reward / 10}")
 
 
 def get_action(action):

@@ -6,7 +6,7 @@ import numpy as np
 chdir("/home/samdknight/Documents/Edinburgh/Diss2019/DRL_UAV_CellularNet")
 
 
-def check_weights(folder="./experiment/2020-01-02 00:10:04.814369", checkpoint=0):
+def check_weights(folder="./experiment/2020-01-07 11:42:58.911707", checkpoint=0):
     num_base_stations, num_users, arena_width = get_metrics_from_summary(folder)
     env = MobiEnvironment(num_base_stations, num_users, arena_width)
     state_space = env.observation_space_dim
@@ -15,14 +15,16 @@ def check_weights(folder="./experiment/2020-01-02 00:10:04.814369", checkpoint=0
         state_space=state_space,
         action_space=action_space
     )
-    global_network.load_weights(path.join(folder, f"checkpoint_{checkpoint}.h5"))
+    global_network.load_weights(path.join(folder, f"checkpoint_{checkpoint}", "model.h5"))
     new_state, _, _, _ = env.step(4)
-    action_log_prob, _ = global_network(
+    action_log_prob, value = global_network(
         tf.convert_to_tensor(np.ravel(new_state)[np.newaxis, :], dtype=tf.float32)
     )
     print(action_log_prob)
     action_prob = tf.nn.softmax(tf.squeeze(action_log_prob)).numpy()
-    print(action_prob)
+    print(np.argmax(action_prob))
+    print(f"Action Prob: {action_prob}")
+    print(f"Value: {value}")
 
 def get_metrics_from_summary(folder):
     num_base_stations, num_users, arena_width = 0, 0, 0

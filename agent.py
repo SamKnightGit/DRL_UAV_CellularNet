@@ -41,6 +41,7 @@ class Worker(threading.Thread):
                  max_episodes,
                  optimizer,
                  update_frequency,
+                 entropy_coefficient,
                  norm_clip_value,
                  num_checkpoints,
                  reward_queue,
@@ -61,7 +62,7 @@ class Worker(threading.Thread):
         for checkpoint in range(num_checkpoints):
             os.makedirs(os.path.join(save_dir, f"checkpoint_{checkpoint}"), exist_ok=True)
         self.global_network = global_network
-        self.local_network = model.A3CNetwork(self.state_space, self.action_space)
+        self.local_network = model.A3CNetwork(self.state_space, self.action_space, entropy_coefficient=entropy_coefficient)
 
         self.reward_breakdown = []
         self.base_station_locations = []
@@ -117,17 +118,10 @@ class Worker(threading.Thread):
 
             done = False
             while not done:
-                action_log_prob, _ = self.local_network(
+                action_prob, _ = self.local_network(
                     tf.convert_to_tensor(current_state[np.newaxis, :], dtype=tf.float32)
                 )
-                action_prob = tf.nn.softmax(tf.squeeze(action_log_prob)).numpy()
-                for ap in action_prob:
-                    if tf.math.is_nan(ap):
-                        print("Found NAN in action prob")
-                        print(action_prob)
-                        print("Action log prob")
-                        print(action_log_prob)
-                        print(current_state[np.newaxis, :])
+                action_prob = tf.squeeze(action_prob).numpy()
 
                 action = np.random.choice(self.action_space, p=action_prob)
                 new_state, reward, done, info = self.env.step(action)
@@ -146,7 +140,8 @@ class Worker(threading.Thread):
                         with tf.GradientTape() as tape:
                             local_loss = self.local_network.get_loss(done, new_state, history)
                         local_gradients = tape.gradient(local_loss, self.local_network.trainable_weights)
-                        local_gradients, _ = tf.clip_by_global_norm(local_gradients, self.norm_clip_value)
+                        if self.norm_clip_value:
+                            local_gradients, _ = tf.clip_by_global_norm(local_gradients, self.norm_clip_value)
                         self.optimizer.apply_gradients(
                             zip(local_gradients, self.global_network.trainable_weights)
                         )
@@ -251,11 +246,12 @@ class TestWorker(threading.Thread):
             while not done:
                 if self.render:
                     self.env.render()
-                action_log_prob, _ = self.global_network(
+                action_prob, _ = self.global_network(
                     tf.convert_to_tensor(current_state[np.newaxis, :], dtype=tf.float32)
                 )
-                action_prob = tf.nn.softmax(tf.squeeze(action_log_prob)).numpy() + 1e-9
-                action = np.random.choice(self.action_space, p=action_prob)
+                action_prob = tf.squeeze(action_prob).numpy()
+                action = np.argmax(action_prob)
+
                 new_state, reward, done, info = self.env.step_test(action)
                 self._record_info(info, action)
                 new_state = np.ravel(new_state)
