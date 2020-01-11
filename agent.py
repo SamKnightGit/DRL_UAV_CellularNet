@@ -31,6 +31,7 @@ class Worker(threading.Thread):
     save_lock = threading.Lock()
     checkpoint_lock = threading.Lock()
     update_lock = threading.Lock()
+    best_worker_index = 0
 
     def __init__(self,
                  worker_index,
@@ -38,6 +39,7 @@ class Worker(threading.Thread):
                  num_base_stations,
                  num_users,
                  arena_width,
+                 random_seed,
                  max_episodes,
                  optimizer,
                  update_frequency,
@@ -49,7 +51,7 @@ class Worker(threading.Thread):
         super(Worker, self).__init__()
         self.worker_index = worker_index
         self.name = f"Worker_{worker_index}"
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width)
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
@@ -96,14 +98,18 @@ class Worker(threading.Thread):
         self.user_locations.append(info.ue_loc)
         self.outage_fraction.append(info.outage_fraction)
 
-    def _save_info(self, checkpoint):
+    def _save_info(self, checkpoint, is_best=False):
+        if is_best:
+            worker_name = "worker_best"
+        else:
+            worker_name = "worker_0"
         checkpoint_dir = os.path.join(self.save_dir, f"checkpoint_{checkpoint}")
-        np.save(os.path.join(checkpoint_dir, "reward_breakdown"), self.reward_breakdown)
-        np.save(os.path.join(checkpoint_dir, "base_station_locations"), self.base_station_locations)
-        np.save(os.path.join(checkpoint_dir, "base_station_actions"), self.base_station_actions)
-        np.save(os.path.join(checkpoint_dir, "instructed_actions"), self.actions)
-        np.save(os.path.join(checkpoint_dir, "user_locations"), self.user_locations)
-        np.save(os.path.join(checkpoint_dir, "outage_fraction"), self.outage_fraction)
+        np.save(os.path.join(checkpoint_dir, f"{worker_name}_reward_breakdown"), self.reward_breakdown)
+        np.save(os.path.join(checkpoint_dir, f"{worker_name}_base_station_locations"), self.base_station_locations)
+        np.save(os.path.join(checkpoint_dir, f"{worker_name}_base_station_actions"), self.base_station_actions)
+        np.save(os.path.join(checkpoint_dir, f"{worker_name}_instructed_actions"), self.actions)
+        np.save(os.path.join(checkpoint_dir, f"{worker_name}_user_locations"), self.user_locations)
+        np.save(os.path.join(checkpoint_dir, f"{worker_name}_outage_fraction"), self.outage_fraction)
         self._clear_info()
 
     def run(self):
@@ -132,8 +138,7 @@ class Worker(threading.Thread):
 
                 history.append(current_state, action, reward)
 
-                if self.worker_index == 0:
-                    self._record_info(info, action)
+                self._record_info(info, action)
 
                 if update_counter == self.update_frequency or done:
                     with Worker.update_lock:
@@ -170,6 +175,7 @@ class Worker(threading.Thread):
                     self._save_global_weights(checkpoint_model_path)
                     print(f"Saved checkpoint best model at: {checkpoint_model_path}")
                     Worker.best_checkpoint_score = ep_reward
+                    Worker.best_worker_index = self.worker_index
 
                 if not os.path.exists(checkpoint_model_path):
                     self._save_global_weights(checkpoint_model_path)
@@ -190,6 +196,8 @@ class Worker(threading.Thread):
             )
             if self.worker_index == 0 and not os.path.exists(checkpoint_np_file):
                 self._save_info(current_checkpoint)
+            if self.worker_index == Worker.best_worker_index:
+                self._save_info(current_checkpoint, is_best=True)
         self.reward_queue.put(None)
 
 

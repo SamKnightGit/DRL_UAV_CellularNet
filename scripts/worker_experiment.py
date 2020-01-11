@@ -11,7 +11,7 @@ if __name__ == "__main__":
             "run_a3c.py",
             "--num_base_stations=1",
             "--num_users=1",
-            "--max_episodes=1000",
+            "--max_episodes=800",
             f"--num_workers={num_workers}",
             "--random_seed=222",
             "--num_checkpoints=10",

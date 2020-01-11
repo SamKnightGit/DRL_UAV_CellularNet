@@ -71,6 +71,7 @@ def run_training(
             num_base_stations,
             num_users,
             arena_width,
+            random_seed,
             max_episodes,
             optimizer,
             network_update_frequency,
