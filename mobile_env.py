@@ -15,7 +15,7 @@ from collections import namedtuple
 matplotlib.rcParams.update({'font.size': 14})
 
 # defining the number of steps
-MAXSTEP = 2000
+MAXSTEP = 200
 UE_STEP = 1
 
 N_ACT = 5   #number of actions of a single agent
@@ -29,7 +29,7 @@ MIN_BS_DIST = 2
 
 R_BS = 50
 #
-BS_STEP = 2
+BS_STEP = 1
 
 
 class MobiEnvironment:
@@ -45,7 +45,7 @@ class MobiEnvironment:
         if random_seed is not None:
             np.random.seed(seed=random_seed)
 
-        [xMin, xMax, yMin, yMax] = [1, self.grid_n, 1, self.grid_n]
+        [xMin, xMax, yMin, yMax] = [0, self.grid_n-1, 0, self.grid_n-1]
         boundaries = [xMin, xMax, yMin, yMax]
         base_station_x = []
         base_station_y = []
@@ -62,7 +62,6 @@ class MobiEnvironment:
 
         self.boundaries = boundaries
         self.mobility_model = mobility_model
-        print("mobility model: ", mobility_model, " grid size ", grid_n)
         #       bsLoc is 3D, bsLocGrid is 2D heatmap
         #self.bsLoc, self.bsLocGrid = GetRandomLocationInGrid(self.grid_n, self.grid_n, self.nBS, H_BS, MIN_BS_DIST)
         self.initBsLoc = np.array([
@@ -117,9 +116,11 @@ class MobiEnvironment:
 
         
         self.action_space_dim = N_ACT**self.nBS
-        self.observation_space_dim = 3 * (self.nBS + self.nUE)
+        # self.observation_space_dim = 3 * (self.nBS + self.nUE)
+        self.observation_space_dim = 2 * (self.grid_n ** 2)
 
-        self.state = np.zeros((self.nBS + self.nUE, 3))
+        # self.state = np.concatenate((self.bsLoc, self.ueLoc))
+        self.state = np.concatenate((self.bsLocGrid, self.ueLocGrid))
         self.step_n = 0
     
 
@@ -147,7 +148,8 @@ class MobiEnvironment:
 
         self.channel.reset(self.ueLoc, self.bsLoc)
         # self.association = self.channel.GetCurrentAssociationMap(self.ueLoc)
-        self.state = np.concatenate((self.bsLoc, self.ueLoc))
+        # self.state = np.concatenate((self.bsLoc, self.ueLoc))
+        self.state = np.concatenate((self.bsLocGrid, self.ueLocGrid))
         self.step_n = 0
         
         return np.array(self.state)
@@ -171,7 +173,8 @@ class MobiEnvironment:
 
         # r_dissect.append(-1.0 * nOut/self.nUE)
         
-        self.state = np.concatenate((self.bsLoc, self.ueLoc))
+        self.state = np.concatenate((self.bsLocGrid, self.ueLocGrid))
+        # self.state = np.concatenate((self.bsLoc, self.ueLoc))
 
         done = False
 
@@ -181,7 +184,11 @@ class MobiEnvironment:
             done = True
 
         # reward = max(sum(r_dissect), -1)
-        reward = meanSINR/200
+        if np.equal(self.bsLoc[0][:-1], self.ueLoc[0][:-1]).all():
+            reward = 1
+        else:
+            reward = 0
+        # reward = meanSINR/200
 
         info_tup = namedtuple('info_tup', ['r_dissect', 'step_n', 'ue_loc', 'bs_loc', 'outage_fraction', 'bs_actions'])
         info = info_tup(reward, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut) / self.nUE, bsActions)
@@ -213,7 +220,8 @@ class MobiEnvironment:
         #
         # r_dissect.append(-1.0 * nOut/self.nUE)
 
-        self.state = np.concatenate((self.bsLoc, self.ueLoc))
+        self.state = np.concatenate((self.bsLocGrid, self.ueLocGrid))
+        # self.state = np.concatenate((self.bsLoc, self.ueLoc))
         
         done = False
         
@@ -223,7 +231,11 @@ class MobiEnvironment:
             done = True
     
         # reward = max(sum(r_dissect), -1)
-        reward = meanSINR/200
+        if np.equal(self.bsLoc[0][:-1], self.ueLoc[0][:-1]).all():
+            reward = 1
+        else:
+            reward = 0
+        # reward = meanSINR/200
 
         info_tup = namedtuple('info_tup', ['r_dissect', 'step_n', 'ue_loc', 'bs_loc', 'outage_fraction', 'bs_actions'])
         info = info_tup(reward, self.step_n, self.ueLoc, self.bsLoc, (1.0 * nOut) / self.nUE, bsActions)

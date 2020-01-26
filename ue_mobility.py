@@ -217,37 +217,37 @@ def BS_move(loc, bound, action, stepLen, min_dist, n_action):
         [x, y, z] = loc[i]
         
         if val == 0:
-            if x + stepLen < xMax:
+            if x + stepLen <= xMax:
                 x = x + stepLen
 
         elif val == 1:
-            if x - stepLen > xMin:
+            if x - stepLen >= xMin:
                 x = x - stepLen
 
         elif val == 2:
-            if y + stepLen < yMax:
+            if y + stepLen <= yMax:
                 y = y + stepLen
     
         elif val == 3:
-            if y - stepLen > yMin:
+            if y - stepLen >= yMin:
                 y = y - stepLen
     
         # stay if val == 4
 
         elif val == 5:
-            if x + stepLenLong < xMax:
+            if x + stepLenLong <= xMax:
                 x = x + stepLenLong
         
         elif val == 6:
-            if x - stepLenLong > xMin:
+            if x - stepLenLong >= xMin:
                 x = x - stepLenLong
 
         elif val == 7:
-            if y + stepLenLong < yMax:
+            if y + stepLenLong <= yMax:
                 y = y + stepLenLong
         
         elif val == 8:
-            if y - stepLenLong > yMin:
+            if y - stepLenLong >= yMin:
                 y = y - stepLenLong
 
 

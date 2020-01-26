@@ -6,24 +6,30 @@ from collections import deque
 
 
 class A3CNetwork(tf.keras.Model):
-    def __init__(self, state_space, action_space, value_weight=0.5, entropy_coefficient=0.05):
+    def __init__(self, state_space, action_space, value_weight=0.5, entropy_coefficient=0.01):
         super(A3CNetwork, self).__init__()
         self.state_space = state_space
         self.action_space = action_space
         self.value_weight = value_weight
         self.entropy_coefficient = entropy_coefficient
 
-        self.dense_shared_1 = layers.Dense(1000, activation='relu',
-                                           kernel_initializer=initializers.glorot_uniform)
-        self.dense_value_hidden1 = layers.Dense(1000, activation='relu',
-                                               kernel_initializer=initializers.glorot_uniform)
-        self.dense_critic_hidden1 = layers.Dense(1000, activation='relu',
+        self.dense_shared = layers.Dense(1000, activation='relu', input_dim=self.state_space,
                                                 kernel_initializer=initializers.glorot_uniform)
+        # self.dense_value_hidden2 = layers.Dense(500, activation='relu',
+        #                                         kernel_initializer=initializers.glorot_uniform)
+        # self.dense_value_hidden3 = layers.Dense(250, activation='relu',
+        #                                         kernel_initializer=initializers.glorot_uniform)
+        # self.dense_value_hidden4 = layers.Dense(100, activation='relu',
+        #                                         kernel_initializer=initializers.glorot_uniform)
 
-        self.dense_value_hidden2 = layers.Dense(256, activation='relu',
-                                               kernel_initializer=initializers.glorot_uniform)
-        self.dense_critic_hidden2 = layers.Dense(256, activation='relu',
-                                                kernel_initializer=initializers.glorot_uniform)
+        # self.dense_critic_hidden1 = layers.Dense(1000, activation='relu', input_dim=self.state_space,
+        #                                          kernel_initializer=initializers.glorot_uniform)
+        # self.dense_critic_hidden2 = layers.Dense(500, activation='relu',
+        #                                          kernel_initializer=initializers.glorot_uniform)
+        # self.dense_critic_hidden3 = layers.Dense(250, activation='relu',
+        #                                          kernel_initializer=initializers.glorot_uniform)
+        # self.dense_critic_hidden4 = layers.Dense(100, activation='relu',
+        #                                          kernel_initializer=initializers.glorot_uniform)
 
         self.policy = layers.Dense(self.action_space, activation=tf.nn.softmax,
                                    kernel_initializer=initializers.glorot_uniform)
@@ -32,13 +38,16 @@ class A3CNetwork(tf.keras.Model):
         self(tf.convert_to_tensor(np.random.random((1, self.state_space)), dtype=tf.float32))
 
     def call(self, inputs):
-        shared_output = self.dense_shared_1(inputs)
-        policy_output = self.dense_critic_hidden1(shared_output)
-        policy_output = self.dense_critic_hidden2(policy_output)
+        policy_output = self.dense_shared(inputs)
+        # policy_output = self.dense_critic_hidden2(policy_output)
+        # policy_output = self.dense_critic_hidden3(policy_output)
+        # policy_output = self.dense_critic_hidden4(policy_output)
         policy = self.policy(policy_output)
 
-        value_output = self.dense_value_hidden1(shared_output)
-        value_output = self.dense_value_hidden2(value_output)
+        value_output = self.dense_shared(inputs)
+        # value_output = self.dense_value_hidden2(value_output)
+        # value_output = self.dense_value_hidden3(value_output)
+        # value_output = self.dense_value_hidden4(value_output)
         value = self.value(value_output)
 
         return policy, value
@@ -72,6 +81,46 @@ class A3CNetwork(tf.keras.Model):
 
         total_loss = policy_loss + self.value_weight * value_loss - entropy * self.entropy_coefficient
         return total_loss
+
+
+class ADQNetwork(tf.keras.Model):
+    def __init__(self, state_space, action_space):
+        super(ADQNetwork, self).__init__()
+        self.state_space = state_space
+        self.action_space = action_space
+
+        self.dense_shared_1 = layers.Dense(400, activation='relu', input_dim=self.state_space,
+                                           kernel_initializer=initializers.glorot_uniform)
+        self.dense_shared_2 = layers.Dense(400, activation='relu', input_dim=self.state_space,
+                                           kernel_initializer=initializers.glorot_uniform)
+        # self.dense_value_hidden = layers.Dense(100, activation='relu', input_dim=self.state_space,
+        #                                        kernel_initializer=initializers.glorot_uniform)
+        # self.dense_critic_hidden = layers.Dense(100, activation='relu', input_dim=self.state_space,
+        #                                         kernel_initializer=initializers.glorot_uniform)
+        self.q_value = layers.Dense(self.action_space, activation=tf.nn.softmax,
+                                    kernel_initializer=initializers.glorot_uniform)
+        # Initialize network weights with random input
+        self(tf.convert_to_tensor(np.random.random((1, self.state_space)), dtype=tf.float32))
+
+    def call(self, inputs):
+        shared_output = self.dense_shared_1(inputs)
+        shared_output = self.dense_shared_2(shared_output)
+
+        q_value = self.q_value(shared_output)
+
+        return q_value
+
+    def get_loss(self, history):
+        total_loss = 0
+        for history_index in range(len(history.targets)):
+            target = history.targets[history_index]
+            state = history.states[history_index]
+            action = history.actions[history_index]
+            state = np.expand_dims(state, axis=0)
+            action_prob = self(tf.convert_to_tensor(state[None, :], dtype=tf.float32))
+            total_loss += target - tf.squeeze(action_prob)[action]
+        return total_loss
+
 
 
 
