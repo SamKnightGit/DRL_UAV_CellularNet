@@ -32,6 +32,7 @@ class Worker(threading.Thread):
     save_lock = threading.Lock()
     checkpoint_lock = threading.Lock()
     update_lock = threading.Lock()
+    best_worker_index = 0
 
     def __init__(self,
                  worker_index,
@@ -46,6 +47,7 @@ class Worker(threading.Thread):
                  target_update_frequency,
                  update_frequency,
                  epsilon,
+                 epsilon_annealing_strategy,
                  discount_factor,
                  norm_clip_value,
                  num_checkpoints,
@@ -65,6 +67,8 @@ class Worker(threading.Thread):
         self.target_update_frequency = target_update_frequency
         self.update_frequency = update_frequency
         self.epsilon = epsilon
+        self.start_epsilon = epsilon
+        self.epsilon_anneal_quantity = self._calculate_epsilon_anneal(epsilon_annealing_strategy)
         self.discount_factor = discount_factor
         self.norm_clip_value = norm_clip_value
         self.episodes_per_checkpoint = int(max_episodes / num_checkpoints)
@@ -88,14 +92,9 @@ class Worker(threading.Thread):
             np.save(file_path, self.gradients)
             self.gradients = []
 
-    def _save_global_weights(self, filename):
+    def _save_global_weights(self, model_path):
         if self.save:
-            self.main_network.save_weights(
-                os.path.join(
-                    self.save_dir,
-                    filename
-                )
-            )
+            self.main_network.save_weights(model_path)
 
     def _calculate_target(self, new_state, reward, done):
         if done:
@@ -107,6 +106,15 @@ class Worker(threading.Thread):
             greedy_action_value = np.max(tf.squeeze(target_action_prob).numpy())
             target_output = reward + self.discount_factor * greedy_action_value
         return target_output
+
+    def _calculate_epsilon_anneal(self, strategy):
+        if strategy == "linear":
+            return self.epsilon / self.max_episodes
+        else:
+            raise NotImplementedError
+    
+    def _anneal_epsilon(self, episode):
+        self.epsilon = self.start_epsilon - (episode * self.epsilon_anneal_quantity)
 
     def _get_next_episode(self):
         with Worker.checkpoint_lock:
@@ -154,6 +162,7 @@ class Worker(threading.Thread):
         global_episode = self._get_next_episode()
         while global_episode < self.max_episodes:
             print(f"Starting global episode: {global_episode}")
+            print(f"   with epsilon value {self.epsilon}")
             if global_episode != 0 and global_episode % self.target_update_frequency == 0:
                 print("Updating target network!")
                 self.target_network.set_weights(self.main_network.get_weights())
@@ -173,7 +182,7 @@ class Worker(threading.Thread):
                     action_prob = tf.squeeze(action_prob).numpy()
                     action = np.random.choice(self.action_space, p=action_prob)
 
-                new_state, reward, done, _ = self.env.step(action)
+                new_state, reward, done, info = self.env.step(action)
                 new_state = np.ravel(new_state)
                 if done:
                     reward = -1
@@ -202,24 +211,27 @@ class Worker(threading.Thread):
                 current_state = new_state
 
             current_checkpoint = int(global_episode / self.episodes_per_checkpoint)
-            checkpoint_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}.h5")
-            gradient_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}_gradients")
+            checkpoint_model_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}", "model.h5")
+            global_model_path = os.path.join(self.save_dir, "best_model.h5")
+            gradient_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}", "gradients")
 
             with Worker.save_lock:
                 if ep_reward >= Worker.best_checkpoint_score:
                     if ep_reward >= Worker.best_score:
                         print(f"New global best score of {ep_reward} achieved by Worker {self.name}!")
-                        self._save_global_weights('checkpoint_best.h5')
+                        self._save_global_weights(global_model_path)
                         print(f"Saved global best model at: {os.path.join(self.save_dir, 'checkpoint_best.h5')}")
                         print(f"Model Loss: {local_loss}")
+                        self._save_info(current_checkpoint, is_best=True)
                         Worker.best_score = ep_reward
                     print(f"New checkpoint best score of {ep_reward} achieved by Worker {self.name}!")
-                    self._save_global_weights(f"checkpoint_{current_checkpoint}.h5")
-                    print(f"Saved checkpoint best model at: {checkpoint_path}")
+                    self._save_global_weights(checkpoint_model_path)
+                    print(f"Saved checkpoint best model at: {checkpoint_model_path}")
                     Worker.best_checkpoint_score = ep_reward
+                    Worker.best_worker_index = self.worker_index
 
-                if self.save and not os.path.exists(checkpoint_path):
-                    self._save_global_weights(f"checkpoint_{current_checkpoint}.h5")
+                if not os.path.exists(checkpoint_model_path):
+                    self._save_global_weights(checkpoint_model_path)
                     Worker.best_checkpoint_score = 0
 
                 if self.worker_index == 0 and (not os.path.exists(gradient_path)):
@@ -229,36 +241,78 @@ class Worker(threading.Thread):
                     Worker.global_average_running_reward = ep_reward
                 else:
                     Worker.global_average_running_reward = Worker.global_average_running_reward * 0.99 + ep_reward * 0.01
-            self.reward_queue.put(Worker.global_average_running_reward)
-            ep_reward = 0
+                self.reward_queue.put(Worker.global_average_running_reward)
+            self._anneal_epsilon(global_episode)
             global_episode = self._get_next_episode()
+            ep_reward = 0
 
+            checkpoint_np_file = os.path.join(
+                self.save_dir,
+                f"checkpoint_{current_checkpoint}",
+                "reward_breakdown.npy"
+            )
+            if self.worker_index == 0 and not os.path.exists(checkpoint_np_file):
+                self._save_info(current_checkpoint)            
+            self._clear_info()
         self.reward_queue.put(None)
 
 
 class TestWorker(threading.Thread):
     def __init__(self,
                  global_network,
-                 gym_game_name,
+                 num_base_stations,
+                 num_users,
+                 arena_width,
                  max_episodes,
                  test_file_name,
-                 render=True):
+                 render=True,
+                 random_seed=None):
         super(TestWorker, self).__init__()
         self.global_network = global_network
-        self.gym_game_name = gym_game_name
-        self.env = gym.make(gym_game_name)
-        self.state_space = self.env.observation_space.shape[0]
-        self.action_space = self.env.action_space.n
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.state_space = self.env.observation_space_dim
+        self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
         self.test_file_name = test_file_name
         self.render = render
+
+
+        self.reward_breakdown = []
+        self.base_station_locations = []
+        self.actions = []
+        self.base_station_actions = []
+        self.user_locations = []
+        self.outage_fraction = []
+
+    def _record_initial_info(self):
+        self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
+        self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+
+    def _record_info(self, info, real_action):
+        self.reward_breakdown.append(info.r_dissect)
+        self.base_station_locations.append(info.bs_loc)
+        self.actions.append(real_action)
+        self.base_station_actions.append(info.bs_actions)
+        self.user_locations.append(info.ue_loc)
+        self.outage_fraction.append(info.outage_fraction)
+
+    def _save_info(self):
+        test_dir = os.path.dirname(self.test_file_name)
+        np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
+        np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
+        np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
+        np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
+        np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
+        np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
 
     def run(self):
         episode = 0
         best_reward = 0
         average_reward = 0
         while episode < self.max_episodes:
-            current_state = self.env.reset()
+            current_state = np.ravel(self.env.reset())
+            self._record_initial_info()
+
             ep_reward = 0
             done = False
             while not done:
@@ -269,7 +323,9 @@ class TestWorker(threading.Thread):
                 )
                 action_prob = tf.squeeze(action_prob).numpy()
                 action = np.argmax(action_prob)
-                new_state, reward, done, _ = self.env.step(action)
+                new_state, reward, done, info = self.env.step(action)
+                self._record_info(info, action)
+                new_state = np.ravel(new_state)
 
                 if done:
                     reward = -1
@@ -285,3 +341,4 @@ class TestWorker(threading.Thread):
             with open(self.test_file_name, "w+") as fp:
                 fp.write(f"Best Reward: {best_reward}\n")
                 fp.write(f"Average Reward: {average_reward}\n")
+        self._save_info()

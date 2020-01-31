@@ -21,6 +21,7 @@ from mobile_env import MobiEnvironment
 @click.option('--target_update_frequency', type=int, default=5)
 @click.option('--network_update_frequency', type=int, default=50)
 @click.option('--epsilon', type=float, default=0.10)
+@click.option('--epsilon_annealing_strategy', type=str, default="linear")
 @click.option('--discount_factor', type=float, default=0.95)
 @click.option('--norm_clip_value', type=float, default=None)
 @click.option('--num_checkpoints', type=int, default=10)
@@ -41,6 +42,7 @@ def run_training(
         target_update_frequency,
         network_update_frequency,
         epsilon,
+        epsilon_annealing_strategy,
         discount_factor,
         norm_clip_value,
         num_checkpoints,
@@ -94,6 +96,7 @@ def run_training(
             target_update_frequency,
             network_update_frequency,
             epsilon,
+            epsilon_annealing_strategy,
             discount_factor,
             norm_clip_value,
             num_checkpoints,
@@ -252,6 +255,9 @@ def write_summary(
         fp.write("Norm Clip Value:".ljust(35) + f"{norm_clip_value}\n")
         fp.write("Time Taken:".ljust(35) + f"{time_taken}\n")
         fp.write("Formatted Time:".ljust(35) + f"{timedelta(seconds=time_taken)}\n")
+        fp.write("Number of Base Stations:".ljust(35) + f"{num_base_stations}\n")
+        fp.write("Number of Users:".ljust(35) + f"{num_users}\n")
+        fp.write("Arena Width:".ljust(35) + f"{arena_width}\n")
         fp.write("Random Seed:".ljust(35) + f"{random_seed}\n")
         fp.write("Network Architecture:\n")
         main_network.summary(print_fn=lambda summ: fp.write(summ + "\n"))
