@@ -26,9 +26,9 @@ class LTEChannel:
         self.K = 120
         # freq reuse factor
         self.r_freq = 1
-        # numebr of channels per BS in DL
+        # number of channels per BS in DL
         self.K_DL = self.alpha * self.K / self.r_freq
-        # numebr of channels per BS in UL
+        # number of channels per BS in UL
         self.K_UL = (1 - self.alpha) * self.K / self.r_freq
         # UE Tx power in dBm
         self.P_ue_dbm = 23
@@ -408,7 +408,7 @@ class LTEChannel:
 
         return association_map#, association_sinr_map
 
-    def GetSinrInArea (self, bsLoc):
+    def GetSinrInArea(self, bsLoc):
 
         dl_sinr = np.zeros((self.gridX, self.gridY))
 

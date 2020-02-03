@@ -48,8 +48,8 @@ def Run_Test(g_test_net, reward_file_name, tf_session):
     MAX_STEP = 2000
 
     #Reading mobility trace from file
-    # test_env = MobiEnvironment(main.N_BS, 40, 100, "read_trace", "./ue_trace_10k.npy")
-    test_env = MobiEnvironment(main.N_BS, main.N_UE, main.AREA_W)
+    test_env = MobiEnvironment(main.N_BS, 40, 100, "read_trace", "./ue_trace_10k.npy")
+    # test_env = MobiEnvironment(main.N_BS, main.N_UE, main.AREA_W)
     #reset states
     s = np.array([np.ravel(test_env.reset())])
 
@@ -64,6 +64,7 @@ def Run_Test(g_test_net, reward_file_name, tf_session):
     ue_loc_buf = []
     bs_loc_buf = []
     action_buf = []
+    sinr_area_buf = []
     x = tf.argmax(g_test_net.a_prob, axis=1)
 #    ue_walk_trace = []
     while step <= MAX_STEP:
@@ -77,19 +78,17 @@ def Run_Test(g_test_net, reward_file_name, tf_session):
         sinr_all.append(test_env.channel.current_BS_sinr)
         decomposed_reward_buf.append(info.r_dissect)
         outage_buf.append(info.outage_fraction)
-        # TODO: COPY INFO UELOC AND BSLOC BECAUSE THEY ARE BEING UPDATED
+
         ue_loc_buf.append(info.ue_loc)
         bs_loc_buf.append(info.bs_loc)
-        print(bs_loc_buf)
         action_buf.append(info.bs_actions)
-#        ue_walk_trace.append(info[2])
         if step % 500 == 0 or step == MAX_STEP:
             print "step ", step
             np.save(reward_file_name + "decomposed_reward", decomposed_reward_buf)
             np.save(reward_file_name + "reward", reward_buf)
+            sinr_area_buf.append(test_env.channel.GetSinrInArea(info.bs_loc))
         np.save(reward_file_name + "sinr", sinr_all)
         np.save(reward_file_name + "time", time_all)
-        #            np.save("ue_trace_10k", ue_walk_trace)
 
         # reset the environment every 2000 steps
         # if step % 2000 == 0:
@@ -111,7 +110,7 @@ def Run_Test(g_test_net, reward_file_name, tf_session):
     np.save(reward_file_name + "ue_location", ue_loc_buf)
     np.save(reward_file_name + "bs_location", bs_loc_buf)
     np.save(reward_file_name + "action", action_buf)
-
+    np.save(reward_file_name + "sinr_area", sinr_area_buf)
 #    np.save("ue_trace_10k", ue_walk_trace)
 
 
@@ -121,7 +120,7 @@ def test_network(test_architecture="AC", parameter_folder_name=""):
         test_net = Load_AC_Net(tf_session, parameter_folder_name)
     else: # default to AC
         test_net = Load_AC_Net(tf_session, parameter_folder_name)
-    reward_file_name = "./test/" + parameter_folder_name + "_group_mm/"
+    reward_file_name = "./test/" + parameter_folder_name + "/"
     try:
         os.makedirs(reward_file_name)
     except OSError:
@@ -129,6 +128,6 @@ def test_network(test_architecture="AC", parameter_folder_name=""):
     Run_Test(test_net, reward_file_name, tf_session)
 
 if __name__ == "__main__":
-    test_network(parameter_folder_name="A3C_median_SINR")
+    test_network(parameter_folder_name="A2C_median_SINR_200episodes_50step_rollout")
 
 
