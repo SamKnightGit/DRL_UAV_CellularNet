@@ -15,7 +15,7 @@ import time
 OUTPUT_GRAPH = True
 LOG_DIR = './log'
 N_WORKERS = 4#multiprocessing.cpu_count()
-MAX_GLOBAL_EP = 200
+MAX_GLOBAL_EP = 1000
 TIMESTEPS_PER_ROLLOUT = 50
 UPDATE_GLOBAL_ITER = 10
 GAMMA = 0.9
@@ -25,7 +25,7 @@ LR_C = 0.0001    # learning rate for critic
 GLOBAL_RUNNING_R = []
 GLOBAL_EP = 0
 TENSOR_SEED = 6
-EXPERIMENT_NAME = "A2C_median_SINR"
+EXPERIMENT_NAME = "A2C_median_SINR_" + str(MAX_GLOBAL_EP) + "episodes_" + str(TIMESTEPS_PER_ROLLOUT) + "step_rollout"
 try:
     os.makedirs("./train/" + EXPERIMENT_NAME)
 except OSError:
