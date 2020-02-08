@@ -89,9 +89,9 @@ class ADQNetwork(tf.keras.Model):
         self.state_space = state_space
         self.action_space = action_space
 
-        self.dense_shared_1 = layers.Dense(400, activation='relu', input_dim=self.state_space,
+        self.dense_shared_1 = layers.Dense(200, activation='relu', input_dim=self.state_space,
                                            kernel_initializer=initializers.glorot_uniform)
-        self.dense_shared_2 = layers.Dense(400, activation='relu', input_dim=self.state_space,
+        self.dense_shared_2 = layers.Dense(200, activation='relu', input_dim=self.state_space,
                                            kernel_initializer=initializers.glorot_uniform)
         # self.dense_value_hidden = layers.Dense(100, activation='relu', input_dim=self.state_space,
         #                                        kernel_initializer=initializers.glorot_uniform)

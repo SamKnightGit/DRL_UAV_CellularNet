@@ -4,7 +4,8 @@ import model
 import numpy as np
 import os
 import copy
-from mobile_env import MobiEnvironment
+import time
+from mobile_env_original import MobiEnvironment
 
 
 class History:
@@ -33,9 +34,11 @@ class Coordinator:
                  timesteps_per_rollout, 
                  timesteps_per_episode, 
                  num_episodes,
+                 num_checkpoints,
                  norm_clip_value,
                  optimizer,
-                 random_seed):
+                 random_seed,
+                 save_dir):
         self.network = network
         self.workers = []
         for worker_index in range(num_workers):
@@ -52,13 +55,16 @@ class Coordinator:
         self.timesteps_per_rollout = timesteps_per_rollout
         self.timesteps_per_episode = timesteps_per_episode
         self.num_episodes = num_episodes
+        self.episodes_per_checkpoint = int(num_episodes / num_checkpoints)
         self.norm_clip_value = norm_clip_value
         self.optimizer = optimizer
+        self.save_dir = save_dir
 
     def run(self):
-        rollouts_per_episode = self.timesteps_per_episode / self.timesteps_per_rollout
+        rollouts_per_episode = int(self.timesteps_per_episode / self.timesteps_per_rollout)
 
         for episode in range(self.num_episodes):
+            current_checkpoint = int(episode / self.episodes_per_checkpoint)
             for rollout in range(rollouts_per_episode):
                 for worker in self.workers:
                     print(f"Processing in worker {worker.worker_index}, rollout {rollout} of episode {episode}")
@@ -71,6 +77,13 @@ class Coordinator:
                     self.optimizer.apply_gradients(
                         zip(gradients, self.network.trainable_weights)
                     )
+                    if done:
+                        print(f"Worker {worker.worker_index} finished. Resetting environment!")
+                        worker.reset_env()
+                    if not os.path.exists(os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}.h5")):
+                        self.network.save_weights(
+                            os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}.h5")
+                        )
 
 class Worker:
     def __init__(self,
@@ -83,7 +96,8 @@ class Worker:
                  random_seed):
         self.worker_index = worker_index
         self.name = f"Worker_{worker_index}"
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        # self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width)
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.state = np.ravel(self.env.reset())
@@ -100,7 +114,7 @@ class Worker:
 
         done = False
         while timestep < self.timesteps_per_rollout:
-            action_prob, _ = self.local_network(
+            action_prob, _ = self.network(
                 tf.convert_to_tensor(current_state[np.newaxis, :], dtype=tf.float32)
             )
             action_prob = tf.squeeze(action_prob).numpy()
@@ -121,17 +135,18 @@ class Worker:
 
 class TestWorker:
     def __init__(self,
-                 global_network,
                  num_base_stations,
                  num_users,
                  arena_width,
+                 network,
                  max_episodes,
                  test_file_name,
                  render=True,
                  random_seed=None):
         super(TestWorker, self).__init__()
-        self.global_network = global_network
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.network = network
+        # self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, "read_trace", "./ue_trace_10k.npy")
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
@@ -139,32 +154,41 @@ class TestWorker:
         self.render = render
 
         self.reward_breakdown = []
-        self.base_station_locations = []
-        self.actions = []
-        self.base_station_actions = []
-        self.user_locations = []
-        self.outage_fraction = []
+        self.sinr_all = []
+        self.time_all = []
+        # self.base_station_locations = []
+        # self.actions = []
+        # self.base_station_actions = []
+        # self.user_locations = []
+        # self.outage_fraction = []
 
     def _record_initial_info(self):
-        self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
-        self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        # self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
+        # self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        pass
 
-    def _record_info(self, info, real_action):
-        self.reward_breakdown.append(info.r_dissect)
-        self.base_station_locations.append(info.bs_loc)
-        self.actions.append(real_action)
-        self.base_station_actions.append(info.bs_actions)
-        self.user_locations.append(info.ue_loc)
-        self.outage_fraction.append(info.outage_fraction)
+    def _record_info(self, info, start_time, real_action=None):
+        # self.reward_breakdown.append(info.r_dissect)
+        # self.base_station_locations.append(info.bs_loc)
+        # self.actions.append(real_action)
+        # self.base_station_actions.append(info.bs_actions)
+        # self.user_locations.append(info.ue_loc)
+        # self.outage_fraction.append(info.outage_fraction)
+        self.reward_breakdown.append(info[0])
+        self.sinr_all.append(self.env.channel.current_BS_sinr)
+        self.time_all.append(time.time() - start_time)
 
     def _save_info(self):
         test_dir = os.path.dirname(self.test_file_name)
-        np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
-        np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
-        np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
-        np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
-        np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
-        np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
+        # np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
+        # np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
+        # np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
+        # np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
+        # np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
+        # np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
+        np.save(os.path.join(test_dir, "reward"), self.reward_breakdown)
+        np.save(os.path.join(test_dir, "sinr"), self.sinr_all)
+        np.save(os.path.join(test_dir, "time"), self.time_all)
 
     def run(self):
         episode = 0
@@ -179,7 +203,7 @@ class TestWorker:
             while not done:
                 if self.render:
                     self.env.render()
-                action_prob, _ = self.global_network(
+                action_prob, _ = self.network(
                     tf.convert_to_tensor(current_state[np.newaxis, :], dtype=tf.float32)
                 )
                 action_prob = tf.squeeze(action_prob).numpy()

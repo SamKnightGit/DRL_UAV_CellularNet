@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from time import time, sleep
 from tqdm import tqdm
 from queue import Queue
-from mobile_env import MobiEnvironment
+from mobile_env_original import MobiEnvironment, MAXSTEP
 
 
 @click.command()
@@ -18,6 +18,7 @@ from mobile_env import MobiEnvironment
 @click.option('--arena_width', type=int, default=100)
 @click.option('--num_workers', type=int, default=1)
 @click.option('--max_episodes', type=int, default=100)
+@click.option('--timesteps_per_rollout', type=int, default=50)
 @click.option('--learning_rate', type=float, default=10e-4)
 @click.option('--network_update_frequency', type=int, default=50)
 @click.option('--entropy_coefficient', type=float, default=0.01)
@@ -35,6 +36,7 @@ def run_training(
         arena_width,
         num_workers,
         max_episodes,
+        timesteps_per_rollout,
         learning_rate,
         network_update_frequency,
         entropy_coefficient,
@@ -50,7 +52,8 @@ def run_training(
         tf.random.set_seed(random_seed)
         np.random_seed(random_seed)
 
-    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    # env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width)
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
@@ -62,46 +65,30 @@ def run_training(
     if not model_directory:
         model_directory = os.path.join(
             "./experiment/",
-            f"{datetime.now()}"
+            f"a2c_{datetime.now()}"
         )
     os.makedirs(model_directory, exist_ok=True)
 
-    reward_queue = Queue()
     optimizer = tf.optimizers.Adam(learning_rate)
-    workers = [
-        agent.Worker(
-            worker_index,
-            global_network,
-            num_base_stations,
-            num_users,
-            arena_width,
-            random_seed,
-            max_episodes,
-            optimizer,
-            network_update_frequency,
-            entropy_coefficient,
-            norm_clip_value,
-            num_checkpoints,
-            reward_queue,
-            model_directory
-        ) for worker_index in range(num_workers)
-    ]
+    coordinator = agent.Coordinator(
+        global_network,
+        num_workers,
+        num_base_stations,
+        num_users,
+        arena_width,
+        timesteps_per_rollout,
+        MAXSTEP,
+        max_episodes,
+        num_checkpoints,
+        norm_clip_value,
+        optimizer,
+        random_seed,
+        model_directory
+    )
+    
     start_time = time()
-    for worker in workers:
-        print(f"Starting Worker: {worker.name}")
-        worker.start()
-        sleep(0.1)
-
-    moving_average_rewards = []
-    while True:
-        reward = reward_queue.get()
-        if reward is not None:
-            moving_average_rewards.append(reward)
-        else:
-            break
-
-    for worker in workers:
-        worker.join()
+    print(f"Starting A2C Coordinator!")
+    coordinator.run()
 
     end_time = time()
     time_taken = end_time - start_time
@@ -121,35 +108,20 @@ def run_training(
                   global_network,
                   filename="summary.txt")
 
-    plt.plot(moving_average_rewards)
-    plt.ylabel('Moving average reward')
-    plt.xlabel('Episode')
-    plt.savefig(os.path.join(model_directory, 'Moving_Average.png'))
-
     if test_model:
         test_dir = os.path.join(model_directory, "test")
         os.makedirs(test_dir)
         print("Running tests with checkpoint policies...")
-        for checkpoint in tqdm(range(num_checkpoints + 1)):
-            if checkpoint == num_checkpoints:
-                model_file_path = os.path.join(
-                    model_directory,
-                    "best_model.h5"
-                )
-                checkpoint = "best"
-            else:
-                model_file_path = os.path.join(
-                    model_directory,
-                    f"checkpoint_{checkpoint}",
-                    "model.h5"
-                )
+        for checkpoint in tqdm(range(num_checkpoints)):
+            model_file_path = os.path.join(
+                model_directory,
+                f"checkpoint_{checkpoint}.h5",
+            )
 
             test_file_path = os.path.join(
                 test_dir,
-                f"checkpoint_{checkpoint}",
                 f"test_checkpoint_{checkpoint}.txt"
             )
-            os.makedirs(os.path.dirname(test_file_path))
 
             if not test_with_random_seed:
                 random_seed = None
@@ -178,7 +150,8 @@ def run_testing(
     if random_seed is not None:
         tf.random.set_seed(random_seed)
 
-    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    # env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width, "read_trace", "./ue_trace_10k.npy")
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
@@ -191,17 +164,16 @@ def run_testing(
     )
 
     worker = agent.TestWorker(
-        global_network,
         num_base_stations,
         num_users,
         arena_width,
+        global_network,
         max_episodes,
         test_file_name,
         render=render,
         random_seed=random_seed
     )
-    worker.start()
-    worker.join()
+    worker.run()
 
 
 def write_summary(

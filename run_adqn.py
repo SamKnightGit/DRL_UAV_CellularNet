@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from time import time, sleep
 from tqdm import tqdm
 from queue import Queue
-from mobile_env import MobiEnvironment
+from mobile_env_original import MobiEnvironment
 
 @click.command()
 @click.option('--num_base_stations', type=int, default=1)
@@ -56,8 +56,8 @@ def run_training(
     if random_seed is not None:
         tf.random.set_seed(random_seed)
         np.random.seed(random_seed)
-
-    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width)
+    # env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
 
@@ -200,8 +200,8 @@ def run_testing(
         random_seed):
     if random_seed is not None:
         tf.random.set_seed(random_seed)
-
-    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width)
+    # env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.ADQNetwork(
@@ -262,8 +262,38 @@ def write_summary(
         fp.write("Network Architecture:\n")
         main_network.summary(print_fn=lambda summ: fp.write(summ + "\n"))
 
+def run_testing_manual(
+    num_checkpoints,
+    num_base_stations,
+    num_users,
+    arena_width,
+    max_episodes,
+    experiment_dir):
+    for checkpoint in tqdm(range(num_checkpoints)):
+        model_file = os.path.join(experiment_dir, f"checkpoint_{checkpoint}", "model.h5")
+        test_folder = os.path.join(experiment_dir, "test", f"checkpoint_{checkpoint}")
+        os.makedirs(test_folder, exist_ok=True)
+        test_file = os.path.join(test_folder, "results.txt")
+        run_testing(
+            num_base_stations,
+            num_users,
+            arena_width,
+            max_episodes,
+            model_file,
+            test_file,
+            False,
+            None
+        )
 
 if __name__ == "__main__":
     run_training()
+    # run_testing_manual(
+    #     10,
+    #     4,
+    #     40,
+    #     100,
+    #     5,
+    #     "/home/sam/Documents/Dissertation/drones/experiment/adqn_2020-02-01 23:08:29.271606"
+    # )
 
 

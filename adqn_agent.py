@@ -1,10 +1,11 @@
 import threading
+import time
 import tensorflow as tf
 import model
 import numpy as np
 import os
 import copy
-from mobile_env import MobiEnvironment
+from mobile_env_original import MobiEnvironment
 
 
 class History:
@@ -57,7 +58,8 @@ class Worker(threading.Thread):
         super(Worker, self).__init__()
         self.worker_index = worker_index
         self.name = f"Worker_{worker_index}"
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        # self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width)
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
@@ -158,6 +160,7 @@ class Worker(threading.Thread):
     def run(self):
         history = History()
         update_counter = 0
+        timestep = 0
         ep_reward = 0
         global_episode = self._get_next_episode()
         while global_episode < self.max_episodes:
@@ -168,11 +171,13 @@ class Worker(threading.Thread):
                 self.target_network.set_weights(self.main_network.get_weights())
             current_state = np.ravel(self.env.reset())
             history.clear()
-            self._record_initial_info()
+            # self._record_initial_info()
             self.gradients = []
 
             done = False
             while not done:
+                if timestep % 100 == 0:
+                    print(f"In Worker {self.worker_index} at timestep {timestep}")
                 if self.epsilon > np.random.random():
                     action = np.random.choice(self.action_space)
                 else:
@@ -190,7 +195,7 @@ class Worker(threading.Thread):
 
                 history.append(current_state, action, self._calculate_target(new_state, reward, done))
 
-                self._record_info(info, action)
+                # self._record_info(info, action)
 
                 if update_counter == self.update_frequency or done:
                     with Worker.update_lock:
@@ -200,13 +205,14 @@ class Worker(threading.Thread):
                         if self.norm_clip_value:
                             local_gradients, _ = tf.clip_by_global_norm(local_gradients, self.norm_clip_value)
                         if self.worker_index == 0:
-                            self.gradients.append(local_gradients)
+                            pass
+                            # self.gradients.append(local_gradients)
                         self.optimizer.apply_gradients(
                             zip(local_gradients, self.main_network.trainable_weights)
                         )
                     history.clear()
                     update_counter = 0
-
+                timestep += 1
                 update_counter += 1
                 current_state = new_state
 
@@ -222,7 +228,7 @@ class Worker(threading.Thread):
                         self._save_global_weights(global_model_path)
                         print(f"Saved global best model at: {os.path.join(self.save_dir, 'checkpoint_best.h5')}")
                         print(f"Model Loss: {local_loss}")
-                        self._save_info(current_checkpoint, is_best=True)
+                        # self._save_info(current_checkpoint, is_best=True)
                         Worker.best_score = ep_reward
                     print(f"New checkpoint best score of {ep_reward} achieved by Worker {self.name}!")
                     self._save_global_weights(checkpoint_model_path)
@@ -235,7 +241,8 @@ class Worker(threading.Thread):
                     Worker.best_checkpoint_score = 0
 
                 if self.worker_index == 0 and (not os.path.exists(gradient_path)):
-                    self._save_gradients(gradient_path)
+                    pass
+                    # self._save_gradients(gradient_path)
 
                 if Worker.global_average_running_reward == 0:
                     Worker.global_average_running_reward = ep_reward
@@ -252,8 +259,9 @@ class Worker(threading.Thread):
                 "reward_breakdown.npy"
             )
             if self.worker_index == 0 and not os.path.exists(checkpoint_np_file):
-                self._save_info(current_checkpoint)            
-            self._clear_info()
+                # self._save_info(current_checkpoint)  
+                pass          
+            # self._clear_info()
         self.reward_queue.put(None)
 
 
@@ -269,7 +277,8 @@ class TestWorker(threading.Thread):
                  random_seed=None):
         super(TestWorker, self).__init__()
         self.global_network = global_network
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        # self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.env = MobiEnvironment(num_base_stations, num_users, 100, "read_trace", "./ue_trace_10k.npy")
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
@@ -283,27 +292,36 @@ class TestWorker(threading.Thread):
         self.base_station_actions = []
         self.user_locations = []
         self.outage_fraction = []
+        self.sinr_all = []
+        self.time_all = []
 
     def _record_initial_info(self):
-        self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
-        self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        # self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
+        # self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        pass
 
-    def _record_info(self, info, real_action):
-        self.reward_breakdown.append(info.r_dissect)
-        self.base_station_locations.append(info.bs_loc)
-        self.actions.append(real_action)
-        self.base_station_actions.append(info.bs_actions)
-        self.user_locations.append(info.ue_loc)
-        self.outage_fraction.append(info.outage_fraction)
+    def _record_info(self, info, start_time, real_action=None):
+        # self.reward_breakdown.append(info.r_dissect)
+        # self.base_station_locations.append(info.bs_loc)
+        # self.actions.append(real_action)
+        # self.base_station_actions.append(info.bs_actions)
+        # self.user_locations.append(info.ue_loc)
+        # self.outage_fraction.append(info.outage_fraction)
+        self.reward_breakdown.append(info[0])
+        self.sinr_all.append(self.env.channel.current_BS_sinr)
+        self.time_all.append(time.time() - start_time)
 
     def _save_info(self):
         test_dir = os.path.dirname(self.test_file_name)
-        np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
-        np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
-        np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
-        np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
-        np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
-        np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
+        # np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
+        # np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
+        # np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
+        # np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
+        # np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
+        # np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
+        np.save(os.path.join(test_dir, "reward"), self.reward_breakdown)
+        np.save(os.path.join(test_dir, "sinr"), self.sinr_all)
+        np.save(os.path.join(test_dir, "time"), self.time_all)
 
     def run(self):
         episode = 0
@@ -323,7 +341,7 @@ class TestWorker(threading.Thread):
                 )
                 action_prob = tf.squeeze(action_prob).numpy()
                 action = np.argmax(action_prob)
-                new_state, reward, done, info = self.env.step(action)
+                new_state, reward, done, info = self.env.step_test(action)
                 self._record_info(info, action)
                 new_state = np.ravel(new_state)
 
