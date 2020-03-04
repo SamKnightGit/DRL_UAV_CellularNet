@@ -53,6 +53,8 @@ class Worker(threading.Thread):
                  norm_clip_value,
                  num_checkpoints,
                  reward_queue,
+                 logging_frequency,
+                 summary_writer,
                  save_dir,
                  save=True):
         super(Worker, self).__init__()
@@ -75,6 +77,8 @@ class Worker(threading.Thread):
         self.norm_clip_value = norm_clip_value
         self.episodes_per_checkpoint = int(max_episodes / num_checkpoints)
         self.reward_queue = reward_queue
+        self.logging_frequency = logging_frequency
+        self.summary_writer = summary_writer
         self.save_dir = save_dir
         self.save = save
         if save:
@@ -181,11 +185,14 @@ class Worker(threading.Thread):
                 if self.epsilon > np.random.random():
                     action = np.random.choice(self.action_space)
                 else:
-                    action_prob = self.main_network(
+                    action_values = self.main_network(
                         tf.convert_to_tensor(current_state[np.newaxis, :], dtype=tf.float32)
                     )
-                    action_prob = tf.squeeze(action_prob).numpy()
-                    action = np.random.choice(self.action_space, p=action_prob)
+                    action_values = tf.squeeze(action_values).numpy()
+                    action = np.argmax(action_values)
+                    if self.worker_index == 0 and timestep % self.logging_frequency == 0:
+                        with self.summary_writer.as_default():
+                            tf.summary.scalar('max Q', action_values[action], log_counter)
 
                 new_state, reward, done, info = self.env.step(action)
                 new_state = np.ravel(new_state)
@@ -201,6 +208,9 @@ class Worker(threading.Thread):
                     with Worker.update_lock:
                         with tf.GradientTape() as tape:
                             local_loss = self.main_network.get_loss(history)
+                        if self.worker_index == 0 and timestep % self.logging_frequency == 0:
+                            with self.summary_writer.as_default():
+                                tf.summary.scalar('loss', local_loss, log_counter)
                         local_gradients = tape.gradient(local_loss, self.main_network.trainable_weights)
                         if self.norm_clip_value:
                             local_gradients, _ = tf.clip_by_global_norm(local_gradients, self.norm_clip_value)
@@ -216,6 +226,9 @@ class Worker(threading.Thread):
                 update_counter += 1
                 current_state = new_state
 
+            with self.summary_writer.as_default():
+                tf.summary.scalar('ep_reward', ep_reward, global_episode)
+                
             current_checkpoint = int(global_episode / self.episodes_per_checkpoint)
             checkpoint_model_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}", "model.h5")
             global_model_path = os.path.join(self.save_dir, "best_model.h5")

@@ -31,6 +31,7 @@ from mobile_env_original import MobiEnvironment
 @click.option('--render_testing', type=bool, default=False)
 @click.option('--random_seed', type=int, default=None)
 @click.option('--test_with_random_seed', type=bool, default=False)
+@click.option('--logging_frequency', type=int, default=10)
 @click.option('--save', type=bool, default=True)
 def run_training(
         num_base_stations,
@@ -52,6 +53,7 @@ def run_training(
         render_testing,
         random_seed,
         test_with_random_seed,
+        logging_frequency,
         save):
     if random_seed is not None:
         tf.random.set_seed(random_seed)
@@ -79,6 +81,11 @@ def run_training(
             "adqn_meanSINR",
             f"adqn_{random_seed}"
         )
+    logging_directory = os.path.join(
+        model_directory,
+        "logs"
+    )
+    summary_writer = tf.summary.create_file_writer(logging_directory)
     if save:
         os.makedirs(model_directory, exist_ok=True)
 
@@ -103,6 +110,8 @@ def run_training(
             norm_clip_value,
             num_checkpoints,
             reward_queue,
+            logging_frequency,
+            summary_writer,
             model_directory,
             save
         ) for worker_index in range(num_workers)
