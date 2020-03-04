@@ -75,7 +75,9 @@ def run_training(
     if not model_directory:
         model_directory = os.path.join(
             "./experiment/",
-            f"adqn_{datetime.now()}"
+            # f"adqn_{datetime.now()}"
+            "adqn_meanSINR",
+            f"adqn_{random_seed}"
         )
     if save:
         os.makedirs(model_directory, exist_ok=True)
@@ -287,6 +289,16 @@ def run_testing_manual(
 
 if __name__ == "__main__":
     run_training()
+    # for exp_dir in os.listdir("/home/sam/Documents/Dissertation/drones/experiment/adqn_epsilon_test"):
+    #     exp_dir = os.path.join("/home/sam/Documents/Dissertation/drones/experiment/adqn_epsilon_test", exp_dir)
+    #     run_testing_manual(
+    #         10,
+    #         4,
+    #         40,
+    #         100,
+    #         5,
+    #         exp_dir
+    #     )
     # run_testing_manual(
     #     10,
     #     4,
