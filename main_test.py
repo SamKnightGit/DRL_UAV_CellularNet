@@ -83,8 +83,8 @@ def Run_Test(g_test_net, reward_file_name):
         if step % 2000 == 0:
             s = np.array([np.ravel(test_env.reset())])
             #warm up in 500 steps
-            for _ in range(500):
-                _, _, _, _ = test_env.step_test(action, False)
+            # for _ in range(500):
+            #     _, _, _, _ = test_env.step_test(action, False)
         else:
             s = np.array([np.ravel(s_)])
         

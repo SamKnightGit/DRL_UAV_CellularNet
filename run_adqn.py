@@ -12,21 +12,24 @@ from queue import Queue
 from mobile_env_original import MobiEnvironment
 
 @click.command()
-@click.option('--num_base_stations', type=int, default=1)
-@click.option('--num_users', type=int, default=1)
+@click.option('--num_base_stations', type=int, default=4)
+@click.option('--num_users', type=int, default=40)
 @click.option('--arena_width', type=int, default=100)
-@click.option('--num_workers', type=int, default=1)
-@click.option('--max_episodes', type=int, default=100)
-@click.option('--learning_rate', type=float, default=10e-4)
-@click.option('--target_update_frequency', type=int, default=5)
-@click.option('--network_update_frequency', type=int, default=50)
+@click.option('--cutoff_sinr', type=int, default=None)
+@click.option('--num_workers', type=int, default=16)
+@click.option('--max_episodes', type=int, default=1000)
+@click.option('--learning_rate', type=float, default=10e-5)
+@click.option('--target_update_frequency', type=int, default=1)
+@click.option('--network_update_frequency', type=int, default=20)
 @click.option('--epsilon', type=float, default=0.10)
 @click.option('--epsilon_annealing_strategy', type=str, default="linear")
-@click.option('--discount_factor', type=float, default=0.95)
-@click.option('--norm_clip_value', type=float, default=None)
+@click.option('--annealing_episodes', type=int, default=200)
+@click.option('--discount_factor', type=float, default=0.99)
+@click.option('--norm_clip_value', type=float, default=1.0)
+@click.option('--clipped_reward', type=bool, default=False)
 @click.option('--num_checkpoints', type=int, default=10)
 @click.option('--model_directory', type=click.Path(), default="")
-@click.option('--test_model', type=bool, default=True)
+@click.option('--test_model', type=bool, default=False)
 @click.option('--test_episodes', type=int, default=100)
 @click.option('--render_testing', type=bool, default=False)
 @click.option('--random_seed', type=int, default=None)
@@ -37,6 +40,7 @@ def run_training(
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         num_workers,
         max_episodes,
         learning_rate,
@@ -44,8 +48,10 @@ def run_training(
         network_update_frequency,
         epsilon,
         epsilon_annealing_strategy,
+        annealing_episodes,
         discount_factor,
         norm_clip_value,
+        clipped_reward,
         num_checkpoints,
         model_directory,
         test_model,
@@ -78,25 +84,27 @@ def run_training(
         model_directory = os.path.join(
             "./experiment/",
             # f"adqn_{datetime.now()}"
-            "adqn_meanSINR",
-            f"adqn_{random_seed}"
+            "adqn_4_40_final",
+            f"{random_seed}"
         )
     logging_directory = os.path.join(
         model_directory,
         "logs"
     )
-    summary_writer = tf.summary.create_file_writer(logging_directory)
     if save:
         os.makedirs(model_directory, exist_ok=True)
-
+        os.makedirs(logging_directory, exist_ok=True)
+    summary_writer = tf.summary.create_file_writer(logging_directory)
     reward_queue = Queue()
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+    epsilon_minimum_values = [0.5, 0.1, 0.01, 0.001, 0]
     workers = [
         agent.Worker(
             worker_index,
             num_base_stations,
             num_users,
             arena_width,
+            cutoff_sinr,
             random_seed,
             max_episodes,
             optimizer,
@@ -104,10 +112,13 @@ def run_training(
             main_network,
             target_update_frequency,
             network_update_frequency,
-            epsilon,
+            epsilon_minimum_values[worker_index % len(epsilon_minimum_values)],
+            #epsilon,
             epsilon_annealing_strategy,
+            annealing_episodes,
             discount_factor,
             norm_clip_value,
+            clipped_reward,
             num_checkpoints,
             reward_queue,
             logging_frequency,
@@ -132,6 +143,7 @@ def run_training(
     for worker in workers:
         worker.join()
 
+    np.save(os.path.join(model_directory, "global_return.npy"), moving_average_rewards)
     end_time = time()
     time_taken = end_time - start_time
 
@@ -142,13 +154,16 @@ def run_training(
                       learning_rate,
                       target_update_frequency,
                       network_update_frequency,
-                      epsilon,
+                      epsilon_minimum_values,
+                      epsilon_annealing_strategy,
+                      annealing_episodes,
                       discount_factor,
                       norm_clip_value,
                       time_taken,
                       num_base_stations,
                       num_users,
                       arena_width,
+                      cutoff_sinr,
                       random_seed,
                       main_network,
                       filename="summary.txt")
@@ -192,6 +207,7 @@ def run_training(
                     num_base_stations,
                     num_users,
                     arena_width,
+                    cutoff_sinr,
                     test_episodes,
                     model_file_path,
                     test_file_path,
@@ -204,6 +220,7 @@ def run_testing(
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         max_episodes,
         model_file,
         test_file_name,
@@ -229,6 +246,7 @@ def run_testing(
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         max_episodes,
         test_file_name,
         render=render
@@ -245,12 +263,15 @@ def write_summary(
         target_update_frequency,
         network_update_frequency,
         epsilon,
+        epsilon_annealing_strategy,
+        annealing_episodes,
         discount_factor,
         norm_clip_value,
         time_taken,
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         random_seed,
         main_network,
         filename="summary.txt"):
@@ -262,6 +283,8 @@ def write_summary(
         fp.write("Target Update Frequency (eps):".ljust(35) + f"{target_update_frequency}\n")
         fp.write("Network Update Frequency:".ljust(35) + f"{network_update_frequency}\n")
         fp.write("Epsilon:".ljust(35) + f"{epsilon}\n")
+        fp.write("Epsilon Annealing Strategy:".ljust(35) + f"{epsilon_annealing_strategy}\n")
+        fp.write("Epsilon Annealing Episodes:".ljust(35) + f"{annealing_episodes}\n")
         fp.write("Discount Factor:".ljust(35) + f"{discount_factor}\n")
         fp.write("Norm Clip Value:".ljust(35) + f"{norm_clip_value}\n")
         fp.write("Time Taken:".ljust(35) + f"{time_taken}\n")
@@ -269,6 +292,7 @@ def write_summary(
         fp.write("Number of Base Stations:".ljust(35) + f"{num_base_stations}\n")
         fp.write("Number of Users:".ljust(35) + f"{num_users}\n")
         fp.write("Arena Width:".ljust(35) + f"{arena_width}\n")
+        fp.write("Cutoff Sinr:".ljust(35) + f"{cutoff_sinr}\n")
         fp.write("Random Seed:".ljust(35) + f"{random_seed}\n")
         fp.write("Network Architecture:\n")
         main_network.summary(print_fn=lambda summ: fp.write(summ + "\n"))
@@ -278,10 +302,11 @@ def run_testing_manual(
     num_base_stations,
     num_users,
     arena_width,
+    cutoff_sinr,
     max_episodes,
     experiment_dir):
     for checkpoint in tqdm(range(num_checkpoints)):
-        model_file = os.path.join(experiment_dir, f"checkpoint_{checkpoint}", "model.h5")
+        model_file = os.path.join(experiment_dir, f"checkpoint_{checkpoint}.h5")
         test_folder = os.path.join(experiment_dir, "test", f"checkpoint_{checkpoint}")
         os.makedirs(test_folder, exist_ok=True)
         test_file = os.path.join(test_folder, "results.txt")
@@ -289,6 +314,7 @@ def run_testing_manual(
             num_base_stations,
             num_users,
             arena_width,
+            cutoff_sinr,
             max_episodes,
             model_file,
             test_file,
@@ -297,7 +323,17 @@ def run_testing_manual(
         )
 
 if __name__ == "__main__":
-    run_training()
+    # run_training()
+    for seed in range(10, 110, 10):
+        run_testing_manual(
+            num_checkpoints=10,
+            num_base_stations=4,
+            num_users=40,
+            arena_width=100,
+            cutoff_sinr=None,
+            max_episodes=5,
+            experiment_dir=f"/home/sam/Documents/Dissertation/drones/experiment/adqn_4_40_final/{seed}/"
+        )  
     # for exp_dir in os.listdir("/home/sam/Documents/Dissertation/drones/experiment/adqn_epsilon_test"):
     #     exp_dir = os.path.join("/home/sam/Documents/Dissertation/drones/experiment/adqn_epsilon_test", exp_dir)
     #     run_testing_manual(
@@ -309,12 +345,11 @@ if __name__ == "__main__":
     #         exp_dir
     #     )
     # run_testing_manual(
-    #     10,
-    #     4,
-    #     40,
-    #     100,
-    #     5,
-    #     "/home/sam/Documents/Dissertation/drones/experiment/adqn_2020-02-01 23:08:29.271606"
+    #     num_checkpoints=10,
+    #     num_base_stations=4,
+    #     num_users=40,
+    #     arena_width=100,
+    #     cutoff_sinr=None,
+    #     max_episodes=5,
+    #     experiment_dir="/home/sam/Documents/Dissertation/drones/experiment/adqn_meanSINR_4_40/10_eps_5000_update_100"
     # )
-
-

@@ -13,20 +13,20 @@ from mobile_env_original import MobiEnvironment, MAXSTEP
 
 
 @click.command()
-@click.option('--num_base_stations', type=int, default=1)
-@click.option('--num_users', type=int, default=1)
+@click.option('--num_base_stations', type=int, default=4)
+@click.option('--num_users', type=int, default=40)
 @click.option('--arena_width', type=int, default=100)
-@click.option('--num_workers', type=int, default=1)
-@click.option('--max_episodes', type=int, default=100)
+@click.option('--cutoff_sinr', type=int, default=None)
+@click.option('--num_workers', type=int, default=16)
+@click.option('--max_episodes', type=int, default=1000)
 @click.option('--timesteps_per_rollout', type=int, default=50)
-@click.option('--learning_rate', type=float, default=10e-4)
-@click.option('--network_update_frequency', type=int, default=50)
+@click.option('--learning_rate', type=float, default=10e-5)
 @click.option('--entropy_coefficient', type=float, default=0.01)
-@click.option('--norm_clip_value', type=float, default=None)
+@click.option('--norm_clip_value', type=float, default=1.0)
 @click.option('--num_checkpoints', type=int, default=10)
 @click.option('--model_directory', type=click.Path(), default="")
-@click.option('--test_model', type=bool, default=True)
-@click.option('--test_episodes', type=int, default=100)
+@click.option('--test_model', type=bool, default=False)
+@click.option('--test_episodes', type=int, default=10)
 @click.option('--render_testing', type=bool, default=False)
 @click.option('--random_seed', type=int, default=None)
 @click.option('--test_with_random_seed', type=bool, default=False)
@@ -34,11 +34,11 @@ def run_training(
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         num_workers,
         max_episodes,
         timesteps_per_rollout,
         learning_rate,
-        network_update_frequency,
         entropy_coefficient,
         norm_clip_value,
         num_checkpoints,
@@ -50,7 +50,7 @@ def run_training(
         test_with_random_seed):
     if random_seed is not None:
         tf.random.set_seed(random_seed)
-        np.random_seed(random_seed)
+        np.random.seed(random_seed)
 
     # env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
     env = MobiEnvironment(num_base_stations, num_users, arena_width)
@@ -65,10 +65,16 @@ def run_training(
     if not model_directory:
         model_directory = os.path.join(
             "./experiment/",
-            f"a2c_{datetime.now()}"
+            f"a2c_4_40_final",
+            f"{random_seed}"
         )
+    logging_directory = os.path.join(
+        model_directory,
+        "logs"
+    )
     os.makedirs(model_directory, exist_ok=True)
-
+    os.makedirs(logging_directory, exist_ok=True)
+    summary_writer = tf.summary.create_file_writer(logging_directory)
     optimizer = tf.optimizers.Adam(learning_rate)
     coordinator = agent.Coordinator(
         global_network,
@@ -76,6 +82,7 @@ def run_training(
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         timesteps_per_rollout,
         MAXSTEP,
         max_episodes,
@@ -83,7 +90,8 @@ def run_training(
         norm_clip_value,
         optimizer,
         random_seed,
-        model_directory
+        model_directory,
+        summary_writer
     )
     
     start_time = time()
@@ -92,18 +100,24 @@ def run_training(
 
     end_time = time()
     time_taken = end_time - start_time
+    np.save(os.path.join(model_directory, "global_return.npy"), coordinator.smoothed_reward)
+    plt.plot(coordinator.smoothed_reward)
+    plt.ylabel('Moving average reward')
+    plt.xlabel('Episode')
+    plt.savefig(os.path.join(model_directory, 'Moving_Average.png'))
 
     write_summary(model_directory,
                   num_workers,
                   max_episodes,
+                  timesteps_per_rollout,
                   learning_rate,
-                  network_update_frequency,
                   entropy_coefficient,
                   norm_clip_value,
                   time_taken,
                   num_base_stations,
                   num_users,
                   arena_width,
+                  cutoff_sinr,
                   random_seed,
                   global_network,
                   filename="summary.txt")
@@ -142,6 +156,7 @@ def run_testing(
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         max_episodes,
         model_file,
         test_file_name,
@@ -180,14 +195,15 @@ def write_summary(
         model_directory,
         num_workers,
         max_episodes,
+        timesteps_per_rollout,
         learning_rate,
-        network_update_frequency,
         entropy_coefficient,
         norm_clip_value,
         time_taken,
         num_base_stations,
         num_users,
         arena_width,
+        cutoff_sinr,
         random_seed,
         global_network,
         filename="summary.txt"):
@@ -196,7 +212,7 @@ def write_summary(
         fp.write("Number of Workers:".ljust(35) + f"{num_workers}\n")
         fp.write("Training Episodes:".ljust(35) + f"{max_episodes}\n")
         fp.write("Learning Rate:".ljust(35) + f"{learning_rate}\n")
-        fp.write("Network Update Frequency:".ljust(35) + f"{network_update_frequency}\n")
+        fp.write("Timesteps per Rollout:".ljust(35) + f"{timesteps_per_rollout}\n")
         fp.write("Entropy Coefficient:".ljust(35) + f"{entropy_coefficient}\n")
         fp.write("Norm Clip Value:".ljust(35) + f"{norm_clip_value}\n")
         fp.write("Time Taken:".ljust(35) + f"{time_taken}\n")
@@ -204,13 +220,65 @@ def write_summary(
         fp.write("Number of Base Stations:".ljust(35) + f"{num_base_stations}\n")
         fp.write("Number of Users:".ljust(35) + f"{num_users}\n")
         fp.write("Arena Width:".ljust(35) + f"{arena_width}\n")
+        fp.write("Cutoff SINR:".ljust(35) + f"{cutoff_sinr}\n")
         fp.write("Random Seed:".ljust(35) + f"{random_seed}\n")
         fp.write("Network Architecture:\n")
         global_network.summary(print_fn=lambda summ: fp.write(summ + "\n"))
 
 
-
+def run_testing_manual(
+    num_checkpoints,
+    num_base_stations,
+    num_users,
+    arena_width,
+    cutoff_sinr,
+    max_episodes,
+    experiment_dir):
+    for checkpoint in tqdm(range(num_checkpoints)):
+        model_file = os.path.join(experiment_dir, f"checkpoint_{checkpoint}.h5")
+        test_folder = os.path.join(experiment_dir, "test", f"checkpoint_{checkpoint}")
+        os.makedirs(test_folder, exist_ok=True)
+        test_file = os.path.join(test_folder, "results.txt")
+        run_testing(
+            num_base_stations,
+            num_users,
+            arena_width,
+            cutoff_sinr,
+            max_episodes,
+            model_file,
+            test_file,
+            False,
+            None
+        )
 
 if __name__ == "__main__":
-    run_training()
+    # run_training()
+    for seed in range(10, 110, 10):
+        run_testing_manual(
+            num_checkpoints=10,
+            num_base_stations=4,
+            num_users=40,
+            arena_width=100,
+            cutoff_sinr=None,
+            max_episodes=5,
+            experiment_dir=f"/home/sam/Documents/Dissertation/drones/experiment/a2c_4_40_final/{seed}/"
+        )    
+    # run_testing_manual(
+    #     num_checkpoints=10,
+    #     num_base_stations=4,
+    #     num_users=40,
+    #     arena_width=100,
+    #     cutoff_sinr=None,
+    #     max_episodes=5,
+    #     experiment_dir="/home/sam/Documents/Dissertation/drones/experiment/a2c_4_40/20_better_smoothed"
+    # )  
+    # run_testing_manual(
+    #     num_checkpoints=10,
+    #     num_base_stations=4,
+    #     num_users=40,
+    #     arena_width=100,
+    #     cutoff_sinr=None,
+    #     max_episodes=5,
+    #     experiment_dir="/home/sam/Documents/Dissertation/drones/experiment/a2c_4_40/30_better_smoothed"
+    # )  
 

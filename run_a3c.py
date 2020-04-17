@@ -9,22 +9,22 @@ from datetime import datetime, timedelta
 from time import time, sleep
 from tqdm import tqdm
 from queue import Queue
-from mobile_env import MobiEnvironment
+from mobile_env_original import MobiEnvironment
 
 
 @click.command()
-@click.option('--num_base_stations', type=int, default=1)
-@click.option('--num_users', type=int, default=1)
+@click.option('--num_base_stations', type=int, default=4)
+@click.option('--num_users', type=int, default=40)
 @click.option('--arena_width', type=int, default=100)
-@click.option('--num_workers', type=int, default=1)
-@click.option('--max_episodes', type=int, default=100)
-@click.option('--learning_rate', type=float, default=10e-4)
+@click.option('--num_workers', type=int, default=16)
+@click.option('--max_episodes', type=int, default=1000)
+@click.option('--learning_rate', type=float, default=10e-5)
 @click.option('--network_update_frequency', type=int, default=50)
 @click.option('--entropy_coefficient', type=float, default=0.01)
-@click.option('--norm_clip_value', type=float, default=None)
+@click.option('--norm_clip_value', type=float, default=1.0)
 @click.option('--num_checkpoints', type=int, default=10)
 @click.option('--model_directory', type=click.Path(), default="")
-@click.option('--test_model', type=bool, default=True)
+@click.option('--test_model', type=bool, default=False)
 @click.option('--test_episodes', type=int, default=100)
 @click.option('--render_testing', type=bool, default=False)
 @click.option('--random_seed', type=int, default=None)
@@ -48,9 +48,9 @@ def run_training(
         test_with_random_seed):
     if random_seed is not None:
         tf.random.set_seed(random_seed)
-        np.random_seed(random_seed)
+        np.random.seed(random_seed)
 
-    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width)
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
@@ -62,7 +62,9 @@ def run_training(
     if not model_directory:
         model_directory = os.path.join(
             "./experiment/",
-            f"{datetime.now()}"
+            # f"{datetime.now()}",
+            f"a3c_4_40_final",
+            f"{random_seed}"
         )
     os.makedirs(model_directory, exist_ok=True)
 
@@ -90,7 +92,6 @@ def run_training(
     for worker in workers:
         print(f"Starting Worker: {worker.name}")
         worker.start()
-        sleep(0.1)
 
     moving_average_rewards = []
     while True:
@@ -121,6 +122,7 @@ def run_training(
                   global_network,
                   filename="summary.txt")
 
+    np.save(os.path.join(model_directory, "global_return.npy"), moving_average_rewards)
     plt.plot(moving_average_rewards)
     plt.ylabel('Moving average reward')
     plt.xlabel('Episode')
@@ -178,7 +180,7 @@ def run_testing(
     if random_seed is not None:
         tf.random.set_seed(random_seed)
 
-    env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+    env = MobiEnvironment(num_base_stations, num_users, arena_width, "read_trace", "./ue_trace_10k.npy")
     state_space = env.observation_space_dim
     action_space = env.action_space_dim
     global_network = model.A3CNetwork(
@@ -236,9 +238,39 @@ def write_summary(
         fp.write("Network Architecture:\n")
         global_network.summary(print_fn=lambda summ: fp.write(summ + "\n"))
 
-
+def run_testing_manual(
+    num_checkpoints,
+    num_base_stations,
+    num_users,
+    arena_width,
+    max_episodes,
+    experiment_dir):
+    for checkpoint in tqdm(range(num_checkpoints)):
+        model_file = os.path.join(experiment_dir, f"checkpoint_{checkpoint}.h5")
+        test_folder = os.path.join(experiment_dir, "test", f"checkpoint_{checkpoint}")
+        os.makedirs(test_folder, exist_ok=True)
+        test_file = os.path.join(test_folder, "results.txt")
+        run_testing(
+            num_base_stations,
+            num_users,
+            arena_width,
+            max_episodes,
+            model_file,
+            test_file,
+            False,
+            None
+        )
 
 
 if __name__ == "__main__":
-    run_training()
+    # run_training()
+    for seed in range(10, 110, 10):
+        run_testing_manual(
+            num_checkpoints=10,
+            num_base_stations=4,
+            num_users=40,
+            arena_width=100,
+            max_episodes=1,
+            experiment_dir=f"/home/sam/Documents/Dissertation/drones/experiment/a3c_4_40_final/{seed}/"
+        )    
 

@@ -40,6 +40,7 @@ class Worker(threading.Thread):
                  num_base_stations,
                  num_users,
                  arena_width,
+                 cutoff_sinr,
                  random_seed,
                  max_episodes,
                  optimizer,
@@ -47,10 +48,12 @@ class Worker(threading.Thread):
                  main_network,
                  target_update_frequency,
                  update_frequency,
-                 epsilon,
+                 min_epsilon,
                  epsilon_annealing_strategy,
+                 annealing_episodes,
                  discount_factor,
                  norm_clip_value,
+                 clipped_reward,
                  num_checkpoints,
                  reward_queue,
                  logging_frequency,
@@ -64,17 +67,21 @@ class Worker(threading.Thread):
         self.env = MobiEnvironment(num_base_stations, num_users, arena_width)
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
+        self.cutoff_sinr = cutoff_sinr
         self.max_episodes = max_episodes
         self.optimizer = optimizer
         self.target_network = target_network
         self.main_network = main_network
         self.target_update_frequency = target_update_frequency
         self.update_frequency = update_frequency
-        self.epsilon = epsilon
-        self.start_epsilon = epsilon
+        self.min_epsilon = min_epsilon
+        self.start_epsilon = 1.0
+        self.epsilon = self.start_epsilon
+        self.annealing_episodes = annealing_episodes
         self.epsilon_anneal_quantity = self._calculate_epsilon_anneal(epsilon_annealing_strategy)
         self.discount_factor = discount_factor
         self.norm_clip_value = norm_clip_value
+        self.clipped_reward = clipped_reward
         self.episodes_per_checkpoint = int(max_episodes / num_checkpoints)
         self.reward_queue = reward_queue
         self.logging_frequency = logging_frequency
@@ -106,21 +113,33 @@ class Worker(threading.Thread):
         if done:
             target_output = reward
         else:
-            target_action_prob = self.target_network(
+            target_action_values = self.target_network(
                 tf.convert_to_tensor(new_state[None, :], dtype=tf.float32)
             )
-            greedy_action_value = np.max(tf.squeeze(target_action_prob).numpy())
-            target_output = reward + self.discount_factor * greedy_action_value
+            target_action_values = tf.squeeze(target_action_values)
+            #DQN Update
+            #greedy_action_value = np.max(tf.squeeze(target_action_prob).numpy())
+            #Double DQN Update
+            main_action_values = self.main_network(
+                tf.convert_to_tensor(new_state[None, :], dtype=tf.float32)
+            )
+            main_action_values = tf.squeeze(main_action_values)
+            decoupled_action_value = target_action_values[tf.math.argmax(main_action_values)]
+            target_output = reward + self.discount_factor * decoupled_action_value
         return target_output
 
     def _calculate_epsilon_anneal(self, strategy):
         if strategy == "linear":
-            return self.epsilon / self.max_episodes
+            return self.epsilon / self.annealing_episodes
         else:
             raise NotImplementedError
     
     def _anneal_epsilon(self, episode):
-        self.epsilon = self.start_epsilon - (episode * self.epsilon_anneal_quantity)
+        next_epsilon = self.start_epsilon - (episode * self.epsilon_anneal_quantity)
+        if next_epsilon < self.min_epsilon:
+            self.epsilon = self.min_epsilon
+        else:
+            self.epsilon = next_epsilon
 
     def _get_next_episode(self):
         with Worker.checkpoint_lock:
@@ -192,9 +211,9 @@ class Worker(threading.Thread):
                     action = np.argmax(action_values)
                     if self.worker_index == 0 and timestep % self.logging_frequency == 0:
                         with self.summary_writer.as_default():
-                            tf.summary.scalar('max Q', action_values[action], log_counter)
+                            tf.summary.scalar('max Q', action_values[action], timestep)
 
-                new_state, reward, done, info = self.env.step(action)
+                new_state, reward, done, info = self.env.step(action, cutoff_sinr=self.cutoff_sinr, clipped_reward=self.clipped_reward)
                 new_state = np.ravel(new_state)
                 if done:
                     reward = -1
@@ -210,7 +229,7 @@ class Worker(threading.Thread):
                             local_loss = self.main_network.get_loss(history)
                         if self.worker_index == 0 and timestep % self.logging_frequency == 0:
                             with self.summary_writer.as_default():
-                                tf.summary.scalar('loss', local_loss, log_counter)
+                                tf.summary.scalar('loss', local_loss, timestep)
                         local_gradients = tape.gradient(local_loss, self.main_network.trainable_weights)
                         if self.norm_clip_value:
                             local_gradients, _ = tf.clip_by_global_norm(local_gradients, self.norm_clip_value)
@@ -228,7 +247,7 @@ class Worker(threading.Thread):
 
             with self.summary_writer.as_default():
                 tf.summary.scalar('ep_reward', ep_reward, global_episode)
-                
+
             current_checkpoint = int(global_episode / self.episodes_per_checkpoint)
             checkpoint_model_path = os.path.join(self.save_dir, f"checkpoint_{current_checkpoint}", "model.h5")
             global_model_path = os.path.join(self.save_dir, "best_model.h5")
@@ -256,7 +275,6 @@ class Worker(threading.Thread):
                 if self.worker_index == 0 and (not os.path.exists(gradient_path)):
                     pass
                     # self._save_gradients(gradient_path)
-
                 if Worker.global_average_running_reward == 0:
                     Worker.global_average_running_reward = ep_reward
                 else:
@@ -284,6 +302,7 @@ class TestWorker(threading.Thread):
                  num_base_stations,
                  num_users,
                  arena_width,
+                 cutoff_sinr,
                  max_episodes,
                  test_file_name,
                  render=True,
@@ -294,12 +313,16 @@ class TestWorker(threading.Thread):
         self.env = MobiEnvironment(num_base_stations, num_users, 100, "read_trace", "./ue_trace_10k.npy")
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
+        self.cutoff_sinr = cutoff_sinr
         self.max_episodes = max_episodes
         self.test_file_name = test_file_name
         self.render = render
 
 
         self.reward_breakdown = []
+        self.sinr_all = []
+        self.time_all = []
+        self.outage_all = []
         self.base_station_locations = []
         self.actions = []
         self.base_station_actions = []
@@ -323,6 +346,7 @@ class TestWorker(threading.Thread):
         self.reward_breakdown.append(info[0])
         self.sinr_all.append(self.env.channel.current_BS_sinr)
         self.time_all.append(time.time() - start_time)
+        self.outage_all.append(info[3])
 
     def _save_info(self):
         test_dir = os.path.dirname(self.test_file_name)
@@ -335,7 +359,8 @@ class TestWorker(threading.Thread):
         np.save(os.path.join(test_dir, "reward"), self.reward_breakdown)
         np.save(os.path.join(test_dir, "sinr"), self.sinr_all)
         np.save(os.path.join(test_dir, "time"), self.time_all)
-
+        np.save(os.path.join(test_dir, "outage"), self.outage_all)
+        
     def run(self):
         episode = 0
         best_reward = 0
@@ -354,7 +379,7 @@ class TestWorker(threading.Thread):
                 )
                 action_prob = tf.squeeze(action_prob).numpy()
                 action = np.argmax(action_prob)
-                new_state, reward, done, info = self.env.step_test(action)
+                new_state, reward, done, info = self.env.step_test(action, cutoff_sinr=self.cutoff_sinr)
                 self._record_info(info, action)
                 new_state = np.ravel(new_state)
 

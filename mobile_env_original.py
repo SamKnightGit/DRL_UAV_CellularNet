@@ -14,7 +14,7 @@ import sys
 matplotlib.rcParams.update({'font.size': 14})
 
 # defining the number of steps
-MAXSTEP = 2000
+MAXSTEP = 200
 UE_STEP = 1
 
 N_ACT = 5   #number of actions of a single agent
@@ -45,8 +45,16 @@ class MobiEnvironment:
         boundaries = [xMin, xMax, yMin, yMax]
 #        xBS = np.array([int(xMin +1), int(xMax -1), int(xMin+1), int(xMax-1)])
 #        yBS = np.array([int(yMin +1), int(yMax -1), int(yMax-1), int(yMin+1)])
-        xBS = np.array([int(xMax/4), int(xMax/4), int(xMax*3/4), int(xMax*3/4)])
-        yBS = np.array([int(yMax/4), int(yMax*3/4), int(yMax/4), int(yMax*3/4)])
+        if (self.nBS == 4):
+            xBS = np.array([int(xMax/4), int(xMax/4), int(xMax*3/4), int(xMax*3/4)])
+            yBS = np.array([int(yMax/4), int(yMax*3/4), int(yMax/4), int(yMax*3/4)])
+        else:
+            xBS, yBS = [],[]
+            for idx in range(self.nBS):
+                xBS.append(np.random.randint(1, xMax))
+                yBS.append(np.random.randint(1, yMax))
+            xBS = np.array(xBS)
+            yBS = np.array(yBS)
 
 
         self.boundaries = boundaries
@@ -72,7 +80,11 @@ class MobiEnvironment:
             self.mm = random_waypoint(nUE, dimensions=(self.grid_n, self.grid_n), velocity=(1, 1), wt_max=1.0)
         elif self.mobility_model == "group":
 #            self.mm = tvc([10,10,10,10], dimensions=(self.grid_n, self.grid_n), velocity=(1, 1.), aggregation=[0.5,0.2], epoch=[1000,1000])
-            self.mm = reference_point_group([10,10,10,10], dimensions=(self.grid_n, self.grid_n), velocity=(0, 1), aggregation=0.8)
+            if (self.nUE == 40):
+                self.mm = reference_point_group([10,10,10,10], dimensions=(self.grid_n, self.grid_n), velocity=(0, 1), aggregation=0.8)
+            else:
+                self.mm = reference_point_group([self.nUE], dimensions=(self.grid_n, self.grid_n), velocity=(0, 1), aggregation=0.8)
+            
             for i in range(200):
                 next(self.mm)
                 i += 1 #repeat in reset
@@ -146,7 +158,7 @@ class MobiEnvironment:
         
         return np.array(self.state)
     
-    def step(self, action , ifrender=False): #(step)
+    def step(self, action, ifrender=False, cutoff_sinr=None, clipped_reward=False): #(step)
         
         positions = next(self.mm)
         #2D to 3D
@@ -182,23 +194,31 @@ class MobiEnvironment:
 #        else:
 #            r_dissect.append(0)
 
+        if cutoff_sinr is not None:
+            if meanSINR < cutoff_sinr:
+                done = True
+
         if self.step_n >= MAXSTEP:
             done = True
 
-        reward = max(sum(r_dissect), -1)
+        if clipped_reward:
+            reward = max(-1, min(sum(r_dissect), 1))
+        else:
+            reward = max(sum(r_dissect), -1)
 #        print meanSINR, " ",nOut," ", r_dissect, " ", reward
 
 #        info = [r_dissect, self.step_n, self.ueLoc]
-        info = [r_dissect, self.step_n]
+        info = [r_dissect, self.step_n, meanSINR, nOut]
         return np.array(self.state), reward, done, info
     
-    def step_test(self, action , ifrender=False): #(step)
+    def step_test(self, action, ifrender=False, cutoff_sinr=None): #(step)
         """
             similar to step(), but write here an individual function to
             avoid "if--else" in the original function to reduce training
             time cost
             """
-        
+        MAXSTEP = 2000
+
         self.ueLoc = self.ueLoc_trace[self.step_n]
         self.bsLoc = BS_move(self.bsLoc, self.boundaries, action, BS_STEP, MIN_BS_DIST + BS_STEP, N_ACT)
         self.association_map, meanSINR, nOut = self.channel.UpdateDroneNet(self.ueLoc, self.bsLoc, ifrender, self.step_n)
@@ -219,12 +239,16 @@ class MobiEnvironment:
         
         self.step_n += 1
         
+        if cutoff_sinr is not None:
+            if meanSINR < cutoff_sinr:
+                done = True
+                
         if self.step_n >= MAXSTEP:
             done = True
     
         reward = max(sum(r_dissect), -1)
         
-        info = [r_dissect, self.step_n, self.ueLoc]
+        info = [r_dissect, self.step_n, self.ueLoc, nOut]
         return np.array(self.state), reward, done, info
 
 

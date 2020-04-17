@@ -4,7 +4,8 @@ import model
 import numpy as np
 import os
 import copy
-from mobile_env import MobiEnvironment
+import time
+from mobile_env_original import MobiEnvironment
 
 
 class History:
@@ -52,7 +53,7 @@ class Worker(threading.Thread):
         super(Worker, self).__init__()
         self.worker_index = worker_index
         self.name = f"Worker_{worker_index}"
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width)
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
@@ -92,16 +93,18 @@ class Worker(threading.Thread):
         self.outage_fraction = []
 
     def _record_initial_info(self):
-        self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
-        self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        # self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
+        # self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        pass
 
     def _record_info(self, info, real_action):
-        self.reward_breakdown.append(info.r_dissect)
-        self.base_station_locations.append(info.bs_loc)
-        self.actions.append(real_action)
-        self.base_station_actions.append(info.bs_actions)
-        self.user_locations.append(info.ue_loc)
-        self.outage_fraction.append(info.outage_fraction)
+        # self.reward_breakdown.append(info.r_dissect)
+        # self.base_station_locations.append(info.bs_loc)
+        # self.actions.append(real_action)
+        # self.base_station_actions.append(info.bs_actions)
+        # self.user_locations.append(info.ue_loc)
+        # self.outage_fraction.append(info.outage_fraction)
+        pass
 
     def _save_info(self, checkpoint, is_best=False):
         if is_best:
@@ -134,7 +137,6 @@ class Worker(threading.Thread):
                     tf.convert_to_tensor(current_state[np.newaxis, :], dtype=tf.float32)
                 )
                 action_prob = tf.squeeze(action_prob).numpy()
-
                 action = np.random.choice(self.action_space, p=action_prob)
                 new_state, reward, done, info = self.env.step(action)
                 # print(info.bs_loc)
@@ -220,7 +222,7 @@ class TestWorker(threading.Thread):
                  random_seed=None):
         super(TestWorker, self).__init__()
         self.global_network = global_network
-        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, random_seed=random_seed)
+        self.env = MobiEnvironment(num_base_stations, num_users, arena_width, "read_trace", "./ue_trace_10k.npy")
         self.state_space = self.env.observation_space_dim
         self.action_space = self.env.action_space_dim
         self.max_episodes = max_episodes
@@ -228,32 +230,44 @@ class TestWorker(threading.Thread):
         self.render = render
 
         self.reward_breakdown = []
+        self.sinr_all = []
+        self.time_all = []
+        self.outage_all = []
         self.base_station_locations = []
         self.actions = []
         self.base_station_actions = []
         self.user_locations = []
-        self.outage_fraction = []
+        
 
     def _record_initial_info(self):
-        self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
-        self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        # self.base_station_locations.append(copy.deepcopy(self.env.bsLoc))
+        # self.user_locations.append(copy.deepcopy(self.env.ueLoc))
+        pass
 
-    def _record_info(self, info, real_action):
-        self.reward_breakdown.append(info.r_dissect)
-        self.base_station_locations.append(info.bs_loc)
-        self.actions.append(real_action)
-        self.base_station_actions.append(info.bs_actions)
-        self.user_locations.append(info.ue_loc)
-        self.outage_fraction.append(info.outage_fraction)
+    def _record_info(self, info, start_time, real_action=None):
+        # self.reward_breakdown.append(info.r_dissect)
+        # self.base_station_locations.append(info.bs_loc)
+        # self.actions.append(real_action)
+        # self.base_station_actions.append(info.bs_actions)
+        # self.user_locations.append(info.ue_loc)
+        # self.outage_fraction.append(info.outage_fraction)
+        self.reward_breakdown.append(info[0])
+        self.sinr_all.append(self.env.channel.current_BS_sinr)
+        self.time_all.append(time.time() - start_time)
+        self.outage_all.append(info[3])
 
     def _save_info(self):
         test_dir = os.path.dirname(self.test_file_name)
-        np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
-        np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
-        np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
-        np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
-        np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
-        np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
+        # np.save(os.path.join(test_dir, "reward_breakdown"), self.reward_breakdown)
+        # np.save(os.path.join(test_dir, "base_station_locations"), self.base_station_locations)
+        # np.save(os.path.join(test_dir, "base_station_actions"), self.base_station_actions)
+        # np.save(os.path.join(test_dir, "instructed_actions"), self.actions)
+        # np.save(os.path.join(test_dir, "user_locations"), self.user_locations)
+        # np.save(os.path.join(test_dir, "outage_fraction"), self.outage_fraction)
+        np.save(os.path.join(test_dir, "reward"), self.reward_breakdown)
+        np.save(os.path.join(test_dir, "sinr"), self.sinr_all)
+        np.save(os.path.join(test_dir, "time"), self.time_all)
+        np.save(os.path.join(test_dir, "outage"), self.outage_all)
 
     def run(self):
         episode = 0
